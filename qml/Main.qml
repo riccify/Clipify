@@ -7,9 +7,9 @@ ApplicationWindow {
     id: window
 
     width: 1040
-    height: 620
+    height: 680
     minimumWidth: 680
-    minimumHeight: 460
+    minimumHeight: 500
     visible: !startInTray
     title: "Clipify"
     flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint
@@ -237,13 +237,18 @@ ApplicationWindow {
     component ShortcutSetting: Panel {
         required property var shortcutController
         required property string heading
+        property bool grouped: false
         Layout.fillWidth: true
-        implicitHeight: shortcutRow.implicitHeight + 28
+        implicitHeight: shortcutRow.implicitHeight + (grouped ? 20 : 28)
+        color: grouped ? "transparent" : window.panelColor
+        border.width: grouped ? 0 : 1
 
         RowLayout {
             id: shortcutRow
             anchors.fill: parent
             anchors.margins: 14
+            anchors.topMargin: grouped ? 10 : 14
+            anchors.bottomMargin: grouped ? 10 : 14
             spacing: 12
 
             LineIcon { symbol: "keys" }
@@ -537,6 +542,7 @@ ApplicationWindow {
                 anchors.margins: 13
                 height: 42
                 text: qsTr("Exit")
+                    enabled: !releaseCheck.busy
                 leftPadding: 13
                 hoverEnabled: true
                 onClicked: windowControls.quit()
@@ -711,15 +717,43 @@ ApplicationWindow {
                             RowLayout {
                                 AboutAction {
                                     text: qsTr("Check again")
-                                    enabled: !releaseCheck.checking
+                                    enabled: !releaseCheck.checking && !releaseCheck.busy
                                     onClicked: releaseCheck.check()
                                 }
                                 AboutAction {
-                                    text: qsTr("Download update")
-                                    enabled: releaseCheck.updateAvailable
-                                    opacity: enabled ? 1 : 0
+                                    text: releaseCheck.canInstall ? qsTr("Download update") : qsTr("Open download")
+                                    enabled: releaseCheck.updateAvailable && !releaseCheck.busy && !releaseCheck.checking
+                                    opacity: releaseCheck.updateAvailable ? 1 : 0
                                     Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                                     onClicked: releaseCheck.openUpdate()
+                                }
+                            }
+
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 4
+                                visible: opacity > 0
+                                opacity: releaseCheck.busy ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                                Label {
+                                    text: qsTr("Download")
+                                    color: window.textColor
+                                }
+                                ProgressBar {
+                                    Layout.fillWidth: true
+                                    value: releaseCheck.downloadProgress
+                                    Behavior on value { NumberAnimation { duration: 100 } }
+                                }
+                                Label {
+                                    text: qsTr("Install")
+                                    color: window.textColor
+                                }
+                                ProgressBar {
+                                    Layout.fillWidth: true
+                                    value: Math.max(0, releaseCheck.installProgress)
+                                    indeterminate: releaseCheck.installing && releaseCheck.installProgress < 0
+                                    Behavior on value { NumberAnimation { duration: 100 } }
                                 }
                             }
                         }
@@ -762,103 +796,141 @@ ApplicationWindow {
 
                 Panel {
                     Layout.fillWidth: true
-                    implicitHeight: settingsRow.implicitHeight + 36
+                    implicitHeight: historySettings.implicitHeight
 
-                    RowLayout {
-                        id: settingsRow
+                    ColumnLayout {
+                        id: historySettings
                         anchors.fill: parent
-                        anchors.margins: 18
-                        anchors.leftMargin: 14
-                        spacing: 16
+                        spacing: 0
 
-                        LineIcon { symbol: "history" }
-
-                        ColumnLayout {
+                        Panel {
                             Layout.fillWidth: true
-                            spacing: 4
+                            implicitHeight: settingsRow.implicitHeight + 24
+                            color: "transparent"
+                            border.width: 0
 
-                            Label {
-                                Layout.fillWidth: true
-                                text: qsTr("Popup history size")
-                                color: window.textColor
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                            }
+                            RowLayout {
+                                id: settingsRow
+                                anchors.fill: parent
+                                anchors.margins: 12
+                                anchors.rightMargin: 18
+                                anchors.leftMargin: 14
+                                spacing: 16
 
-                            Label {
-                                Layout.fillWidth: true
-                                text: qsTr("Sets the number of entries in the shortcut popup. Text copies are stored locally.")
-                                color: window.mutedColor
-                                font.pixelSize: 13
-                                wrapMode: Text.WordWrap
+                                LineIcon { symbol: "history" }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: qsTr("Popup history size")
+                                        color: window.textColor
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: qsTr("Sets the number of entries in the shortcut popup. Text copies are stored locally.")
+                                        color: window.mutedColor
+                                        font.pixelSize: 13
+                                        wrapMode: Text.WordWrap
+                                    }
+                                }
+
+                                SpinBox {
+                                    id: historySize
+                                    Layout.preferredWidth: 126
+                                    Accessible.name: qsTr("Popup history size")
+                                    from: 1
+                                    to: 2147483647
+                                    editable: true
+                                    value: clipboardModule.historyNumber
+                                    onValueModified: clipboardModule.historyNumber = value
+
+                                    background: Rectangle {
+                                        implicitHeight: 40
+                                        radius: height / 2
+                                        color: "#232323"
+                                        border.color: historySize.activeFocus ? window.accentColor : window.borderColor
+                                    }
+
+                                    up.indicator: Label {
+                                        x: historySize.width - width - 4
+                                        y: 4
+                                        width: 32
+                                        height: historySize.height - 8
+                                        text: "+"
+                                        color: window.textColor
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        background: Rectangle {
+                                            radius: height / 2
+                                            color: historySize.up.pressed ? "#545454" : "#383838"
+                                        }
+                                    }
+
+                                    down.indicator: Label {
+                                        x: 4
+                                        y: 4
+                                        width: 32
+                                        height: historySize.height - 8
+                                        text: "−"
+                                        color: historySize.value > historySize.from ? window.textColor : window.mutedColor
+                                        horizontalAlignment: Text.AlignHCenter
+                                        verticalAlignment: Text.AlignVCenter
+                                        background: Rectangle {
+                                            radius: height / 2
+                                            color: historySize.down.pressed ? "#545454" : "#383838"
+                                        }
+                                    }
+                                }
                             }
                         }
 
-                        SpinBox {
-                            id: historySize
-                            Layout.preferredWidth: 126
-                            Accessible.name: qsTr("Popup history size")
-                            from: 1
-                            to: 2147483647
-                            editable: true
-                            value: clipboardModule.historyNumber
-                            onValueModified: clipboardModule.historyNumber = value
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 14
+                            implicitHeight: 1
+                            color: window.borderColor
+                        }
 
-                            background: Rectangle {
-                                implicitHeight: 40
-                                radius: height / 2
-                                color: "#232323"
-                                border.color: historySize.activeFocus ? window.accentColor : window.borderColor
-                            }
-
-                            up.indicator: Label {
-                                x: historySize.width - width - 4
-                                y: 4
-                                width: 32
-                                height: historySize.height - 8
-                                text: "+"
-                                color: window.textColor
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                background: Rectangle {
-                                    radius: height / 2
-                                    color: historySize.up.pressed ? "#545454" : "#383838"
-                                }
-                            }
-
-                            down.indicator: Label {
-                                x: 4
-                                y: 4
-                                width: 32
-                                height: historySize.height - 8
-                                text: "−"
-                                color: historySize.value > historySize.from ? window.textColor : window.mutedColor
-                                horizontalAlignment: Text.AlignHCenter
-                                verticalAlignment: Text.AlignVCenter
-                                background: Rectangle {
-                                    radius: height / 2
-                                    color: historySize.down.pressed ? "#545454" : "#383838"
-                                }
-                            }
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: desktopShortcut
+                            heading: qsTr("Open clipboard history")
                         }
                     }
                 }
 
-                ShortcutSetting {
-                    shortcutController: desktopShortcut
-                    heading: qsTr("Open clipboard history")
-                }
-
-                ShortcutSetting {
-                    shortcutController: ocrShortcut
-                    heading: qsTr("Copy text from screenshot")
-                }
-
-                RowLayout {
+                Panel {
                     Layout.fillWidth: true
-                    spacing: 10
-                    OcrModeButton { text: qsTr("Fast"); accurate: false }
-                    OcrModeButton { text: qsTr("Accurate"); accurate: true }
+                    implicitHeight: ocrSettings.implicitHeight
+
+                    ColumnLayout {
+                        id: ocrSettings
+                        anchors.fill: parent
+                        spacing: 0
+
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: ocrShortcut
+                            heading: qsTr("Copy text from screenshot")
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 14
+                            Layout.bottomMargin: 12
+                            spacing: 10
+                            OcrModeButton { text: qsTr("Fast"); accurate: false }
+                            OcrModeButton { text: qsTr("Accurate"); accurate: true }
+                        }
+                    }
                 }
 
                 Label {
@@ -1043,19 +1115,49 @@ ApplicationWindow {
                 Layout.margins: 22
                 spacing: 14
 
-                ShortcutSetting {
-                    shortcutController: screenShortcut
-                    heading: qsTr("Take screenshot interactively")
-                }
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: captureSettings.implicitHeight
 
-                ShortcutSetting {
-                    shortcutController: fullScreenShortcut
-                    heading: qsTr("Take screenshot")
-                }
+                    ColumnLayout {
+                        id: captureSettings
+                        anchors.fill: parent
+                        spacing: 0
 
-                ShortcutSetting {
-                    shortcutController: focusedWindowShortcut
-                    heading: qsTr("Take a screenshot of focused window")
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: screenShortcut
+                            heading: qsTr("Take screenshot interactively")
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 14
+                            implicitHeight: 1
+                            color: window.borderColor
+                        }
+
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: fullScreenShortcut
+                            heading: qsTr("Take screenshot")
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 14
+                            implicitHeight: 1
+                            color: window.borderColor
+                        }
+
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: focusedWindowShortcut
+                            heading: qsTr("Take a screenshot of focused window")
+                        }
+                    }
                 }
 
                 Panel {

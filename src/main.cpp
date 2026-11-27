@@ -41,8 +41,11 @@ public:
 
     Q_INVOKABLE void quit() const
     {
-        QCoreApplication::exit(0);
+        if (!quitBlocked_)
+            QCoreApplication::exit(0);
     }
+
+    void setQuitBlocked(bool blocked) { quitBlocked_ = blocked; }
 
     Q_INVOKABLE void move(QQuickWindow *window) const
     {
@@ -53,6 +56,9 @@ public:
     {
         window->startSystemResize(Qt::Edges::fromInt(edges));
     }
+
+private:
+    bool quitBlocked_ = false;
 };
 
 #ifdef CLIPIFY_X11
@@ -154,6 +160,10 @@ int main(int argc, char *argv[])
     auto *openAction = trayMenu.addAction(QApplication::translate("Tray", "Open Window"));
     trayMenu.addSeparator();
     auto *quitAction = trayMenu.addAction(QApplication::translate("Tray", "Quit"));
+    QObject::connect(&releaseCheck, &ReleaseCheck::changed, &windowControls, [&] {
+        windowControls.setQuitBlocked(releaseCheck.busy());
+        quitAction->setEnabled(!releaseCheck.busy());
+    });
     const auto openWindow = [mainWindow] {
         if (mainWindow->visibility() == QWindow::Minimized)
             mainWindow->setWindowState(Qt::WindowNoState);

@@ -7,14 +7,14 @@ These instructions cover **Zorin OS 18.1 and Ubuntu 24.04 on X11**. Run `echo "$
 From the folder containing the package, run:
 
 ```bash
-sudo apt install ./clipify_0.1.3_amd64.deb
+sudo apt install ./clipify_0.1.4_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the German and English **Fast** OCR models and adds Clipify to the application menu.
 
 Open **Clipify** from the application menu. On Zorin or GNOME, Clipify sets up available global shortcuts automatically on first launch.
 
-Clipify checks GitHub Releases on startup. Open **About** to see your version, check again, or download an available update. Install the downloaded `.deb` with `sudo apt install ./<filename>.deb`.
+Clipify checks GitHub Releases on startup. Open **About → Download update** to download and install an update for the system-installed `.deb`. Clipify verifies the download, asks for system authorization, and restarts after a successful installation. If the in-app installer is unavailable, **Open download** opens the release download for manual installation.
 
 ## Build and run from source
 
