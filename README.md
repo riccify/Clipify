@@ -6,10 +6,10 @@ Clipify is a modular desktop toolbox for everyday shortcuts. It remembers copied
 
 ## Quick Install
 
-For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.1_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.1/clipify_0.1.1_amd64.deb), then open a terminal in the download folder and run:
+For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.2_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.2/clipify_0.1.2_amd64.deb), then open a terminal in the download folder and run:
 
 ```bash
-sudo apt install ./clipify_0.1.1_amd64.deb
+sudo apt install ./clipify_0.1.2_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the **Fast** OCR models for German and English, then adds **Clipify** to your app menu. **You can launch Clipify right away without compiling anything.**

@@ -2,6 +2,7 @@
 #include "DesktopShortcut.h"
 #include "ScreenCapture.h"
 #include "TextRecognition.h"
+#include "ReleaseCheck.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setQuitOnLastWindowClosed(false);
     app.setApplicationName("Clipify");
+    app.setApplicationVersion(CLIPIFY_VERSION);
     app.setDesktopFileName("io.github.riccify.Clipify");
     app.setOrganizationName("Clipify");
     const bool startInTray = app.arguments().contains("--background");
@@ -122,7 +124,9 @@ int main(int argc, char *argv[])
     QObject::connect(&screenShortcut, &DesktopShortcut::activated, &screenCapture, &ScreenCapture::begin);
     QObject::connect(&fullScreenShortcut, &DesktopShortcut::activated, &screenCapture, &ScreenCapture::captureFullScreen);
     QObject::connect(&focusedWindowShortcut, &DesktopShortcut::activated, &screenCapture, &ScreenCapture::captureFocusedWindow);
+    ReleaseCheck releaseCheck;
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty("releaseCheck", &releaseCheck);
     engine.rootContext()->setContextProperty("startInTray", startInTray);
     engine.rootContext()->setContextProperty("gnomeSetupWarning", gnomeSetupWarning);
     engine.rootContext()->setContextProperty("clipboardModule", &clipboard);
@@ -187,6 +191,7 @@ int main(int argc, char *argv[])
                              openWindow();
                      });
     tray.show();
+    releaseCheck.check();
 
     return app.exec();
 }

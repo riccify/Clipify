@@ -127,6 +127,24 @@ ApplicationWindow {
                 ctx.lineTo(2, 15)
                 ctx.closePath()
                 break
+            case "about":
+                ctx.arc(9, 9, 6.5, 0, Math.PI * 2)
+                ctx.moveTo(9, 7.7)
+                ctx.lineTo(9, 12)
+                ctx.moveTo(9, 5.4)
+                ctx.lineTo(9, 5.6)
+                break
+            case "exit":
+                ctx.moveTo(9, 3)
+                ctx.lineTo(3, 3)
+                ctx.lineTo(3, 15)
+                ctx.lineTo(9, 15)
+                ctx.moveTo(7, 9)
+                ctx.lineTo(15, 9)
+                ctx.moveTo(12, 6)
+                ctx.lineTo(15, 9)
+                ctx.lineTo(12, 12)
+                break
             case "fast":
                 ctx.moveTo(10, 1.5)
                 ctx.lineTo(3.5, 10)
@@ -171,6 +189,26 @@ ApplicationWindow {
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
             }
+
+            Rectangle {
+                visible: clipboardButton.module === "about"
+                opacity: releaseCheck.updateAvailable ? 1 : 0
+                Layout.rightMargin: 7
+                implicitWidth: 17
+                implicitHeight: 17
+                radius: 8.5
+                color: "#e7c75c"
+                Accessible.name: qsTr("Update available")
+                Accessible.ignored: opacity === 0
+                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                Label {
+                    anchors.centerIn: parent
+                    text: "!"
+                    color: "#231c0a"
+                    font.pixelSize: 12
+                    font.bold: true
+                }
+            }
         }
 
         background: Rectangle {
@@ -181,6 +219,18 @@ ApplicationWindow {
             border.color: clipboardButton.visualFocus ? window.accentColor : window.borderColor
             border.width: clipboardButton.highlighted || clipboardButton.visualFocus ? 1 : 0
             Behavior on color { ColorAnimation { duration: 100 } }
+        }
+    }
+
+    component AboutAction: Button {
+        id: action
+        hoverEnabled: true
+        background: Rectangle {
+            implicitHeight: 34
+            radius: 6
+            color: action.down ? "#505050" : action.hovered ? "#454545" : "#353535"
+            border.color: action.visualFocus ? window.accentColor : window.borderColor
+            Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
     }
 
@@ -533,6 +583,13 @@ ApplicationWindow {
                     text: qsTr("Screen")
                 }
 
+                ModuleButton {
+                    anchors.bottom: exitButton.top
+                    anchors.bottomMargin: 5
+                    module: "about"
+                    text: qsTr("About")
+                }
+
                 Button {
                     id: exitButton
                     anchors.left: parent.left
@@ -541,15 +598,25 @@ ApplicationWindow {
                     anchors.margins: 13
                     height: 42
                     text: qsTr("Exit")
+                    leftPadding: 13
+                    hoverEnabled: true
                     onClicked: windowControls.quit()
 
-                    contentItem: Label {
-                        text: exitButton.text
-                        leftPadding: 13
-                        verticalAlignment: Text.AlignVCenter
-                        color: exitButton.hovered ? window.textColor : window.mutedColor
-                        font.pixelSize: 14
-                        font.weight: Font.DemiBold
+                    contentItem: RowLayout {
+                        spacing: 8
+                        LineIcon {
+                            symbol: "exit"
+                            ink: exitButton.hovered ? window.textColor : window.mutedColor
+                            Behavior on ink { ColorAnimation { duration: 160 } }
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            text: exitButton.text
+                            color: exitButton.hovered ? window.textColor : window.mutedColor
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                            Behavior on color { ColorAnimation { duration: 160 } }
+                        }
                     }
 
                     background: Rectangle {
@@ -557,8 +624,119 @@ ApplicationWindow {
                         color: exitButton.down ? "#414141" : exitButton.hovered ? "#303030" : "transparent"
                         border.color: window.accentColor
                         border.width: exitButton.visualFocus ? 1 : 0
+                        Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
                     }
                 }
+            }
+
+            ModulePage {
+                module: "about"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+                spacing: 14
+
+                Label {
+                    text: qsTr("About Clipify")
+                    color: window.textColor
+                    font.pixelSize: 26
+                    font.weight: Font.DemiBold
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: aboutDetails.implicitHeight + 28
+
+                    ColumnLayout {
+                        id: aboutDetails
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+
+                        Label {
+                            text: qsTr("Developer: riccify")
+                            color: window.textColor
+                        }
+                        Label {
+                            text: qsTr("Version %1").arg(Qt.application.version)
+                            color: window.mutedColor
+                        }
+                        AboutAction {
+                            text: qsTr("GitHub · riccify/Clipify")
+                            onClicked: Qt.openUrlExternally("https://github.com/riccify/Clipify")
+                        }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: updateRow.implicitHeight + 28
+
+                    RowLayout {
+                        id: updateRow
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 16
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+
+                            Label {
+                                text: qsTr("Updates")
+                                color: window.textColor
+                                font.weight: Font.DemiBold
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: releaseCheck.status
+                                color: releaseCheck.updateAvailable ? "#e7c75c" : window.mutedColor
+                                wrapMode: Text.WordWrap
+                                Behavior on color { ColorAnimation { duration: 160 } }
+                            }
+                            RowLayout {
+                                AboutAction {
+                                    text: qsTr("Check again")
+                                    enabled: !releaseCheck.checking
+                                    onClicked: releaseCheck.check()
+                                }
+                                AboutAction {
+                                    text: qsTr("Download update")
+                                    enabled: releaseCheck.updateAvailable
+                                    opacity: enabled ? 1 : 0
+                                    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                                    onClicked: releaseCheck.openUpdate()
+                                }
+                            }
+                        }
+
+                        Item {
+                            Layout.preferredWidth: 64
+                            Layout.preferredHeight: 60
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: "✓"
+                                font.pixelSize: 42
+                                color: "#ffffff"
+                                opacity: releaseCheck.upToDate ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            }
+
+                            Label {
+                                anchors.centerIn: parent
+                                text: "!"
+                                font.pixelSize: 42
+                                font.weight: Font.Bold
+                                color: "#e7c75c"
+                                opacity: releaseCheck.updateAvailable ? 1 : 0
+                                Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
             }
 
             ModulePage {

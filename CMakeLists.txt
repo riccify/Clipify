@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(Clipify VERSION 0.1.1 LANGUAGES CXX)
+project(Clipify VERSION 0.1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Sql Widgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Sql Widgets Network)
 qt_standard_project_setup()
 
 qt_add_executable(clipify WIN32
@@ -13,6 +13,8 @@ qt_add_executable(clipify WIN32
     src/ScreenCapture.h
     src/TextRecognition.cpp
     src/TextRecognition.h
+    src/ReleaseCheck.cpp
+    src/ReleaseCheck.h
     src/main.cpp
     src/ClipboardModule.cpp
     src/ClipboardModule.h
@@ -29,7 +31,8 @@ qt_add_resources(clipify "clipify_branding"
     PREFIX "/clipify"
     FILES assets/clipify-app-icon.png
 )
-target_link_libraries(clipify PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Widgets)
+target_link_libraries(clipify PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Widgets Qt6::Network)
+target_compile_definitions(clipify PRIVATE CLIPIFY_VERSION="${PROJECT_VERSION}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     configure_file(scripts/setup-gnome-shortcut.py clipify-setup-gnome COPYONLY)
