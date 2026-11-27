@@ -228,7 +228,7 @@ ApplicationWindow {
                 padding: 3
                 hoverEnabled: true
                 enabled: shortcutController.canChangeShortcut
-                text: recording ? qsTr("Recording…") : shortcutController.shortcut
+                text: recording ? qsTr("Recording…") : (shortcutController.shortcut || qsTr("Choose shortcut"))
                 Accessible.name: qsTr("Choose %1: %2").arg(heading).arg(text)
                 ToolTip.visible: hovered && !recording
                 ToolTip.text: shortcutController.error || qsTr("Choose shortcut")
@@ -679,7 +679,8 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: clipboardModule.storageError || desktopShortcut.error || ocrShortcut.error
+                    text: [clipboardModule.storageError, desktopShortcut.error, ocrShortcut.error, gnomeSetupWarning]
+                          .filter(message => message.length > 0).join("\n")
                     color: "#ffb4ab"
                     wrapMode: Text.WordWrap
                 }

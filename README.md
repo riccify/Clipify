@@ -6,15 +6,15 @@ Clipify is a modular desktop toolbox for everyday shortcuts. It remembers copied
 
 ## Quick Install
 
-For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.0_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.0/clipify_0.1.0_amd64.deb), then open a terminal in the download folder and run:
+For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.1_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.1/clipify_0.1.1_amd64.deb), then open a terminal in the download folder and run:
 
 ```bash
-sudo apt install ./clipify_0.1.0_amd64.deb
+sudo apt install ./clipify_0.1.1_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the **Fast** OCR models for German and English, then adds **Clipify** to your app menu. **You can launch Clipify right away without compiling anything.**
 
-**Zorin and GNOME:** To enable global shortcuts such as `Super+V`, run `clipify-setup-gnome` once in your desktop session, then launch Clipify from the app menu. Restart Clipify if it was already running.
+**Zorin and GNOME:** Open Clipify from the app menu. Clipify sets up available global shortcuts in your account on first launch. If GNOME already uses `Super+V`, Clipify tries `Super+Shift+V`. You can change any binding in the app.
 
 [Build from source](#build-from-source) · [Detailed installation guide](Installer.md)
 
@@ -59,7 +59,7 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ```
 
-On Zorin or GNOME, run `/usr/bin/python3 scripts/setup-gnome-shortcut.py` once. Then run `./build/clipify` from the repository root.
+Run `./build/clipify` from the repository root. On GNOME, first launch also configures available global shortcuts.
 
 See [Installer.md](Installer.md) for tray autostart, optional **Accurate** OCR models, desktop integration, and instructions for building the `.deb`.
 

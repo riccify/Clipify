@@ -6,6 +6,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QMenu>
+#include <QProcess>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQuickStyle>
@@ -53,6 +54,28 @@ public:
     }
 };
 
+#ifdef CLIPIFY_X11
+static QString configureGnomeShortcuts()
+{
+    if (QGuiApplication::platformName() != "xcb"
+        || !qEnvironmentVariable("XDG_CURRENT_DESKTOP").split(':').contains("GNOME", Qt::CaseInsensitive))
+        return {};
+
+    QProcess setup;
+    setup.start("/usr/bin/python3",
+                {QCoreApplication::applicationDirPath() + "/clipify-setup-gnome"});
+    if (!setup.waitForFinished(3000) || setup.exitStatus() != QProcess::NormalExit || setup.exitCode() != 0) {
+        if (setup.state() != QProcess::NotRunning) {
+            setup.kill();
+            setup.waitForFinished();
+        }
+        qWarning().noquote() << setup.readAllStandardError();
+        return QApplication::translate("Shortcuts", "Could not complete GNOME shortcut setup.");
+    }
+    return QString::fromUtf8(setup.readAllStandardError()).trimmed();
+}
+#endif
+
 int main(int argc, char *argv[])
 {
     QApplication app(argc, argv);
@@ -61,6 +84,7 @@ int main(int argc, char *argv[])
     app.setDesktopFileName("io.github.riccify.Clipify");
     app.setOrganizationName("Clipify");
     const bool startInTray = app.arguments().contains("--background");
+    QString gnomeSetupWarning;
     WindowControls windowControls;
 #ifdef CLIPIFY_X11
     const QString applicationService = "io.github.riccify.Clipify.Application";
@@ -78,6 +102,7 @@ int main(int argc, char *argv[])
         if (!sessionBus.registerObject(applicationObject, &windowControls,
                                        QDBusConnection::ExportScriptableInvokables))
             return 1;
+        gnomeSetupWarning = configureGnomeShortcuts();
     }
 #endif
     QQuickStyle::setStyle("Basic");
@@ -99,6 +124,7 @@ int main(int argc, char *argv[])
     QObject::connect(&focusedWindowShortcut, &DesktopShortcut::activated, &screenCapture, &ScreenCapture::captureFocusedWindow);
     QQmlApplicationEngine engine;
     engine.rootContext()->setContextProperty("startInTray", startInTray);
+    engine.rootContext()->setContextProperty("gnomeSetupWarning", gnomeSetupWarning);
     engine.rootContext()->setContextProperty("clipboardModule", &clipboard);
     engine.rootContext()->setContextProperty("windowControls", &windowControls);
     engine.rootContext()->setContextProperty("desktopShortcut", &desktopShortcut);

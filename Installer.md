@@ -7,18 +7,18 @@ These instructions cover **Zorin OS 18.1 and Ubuntu 24.04 on X11**. Run `echo "$
 From the folder containing the package, run:
 
 ```bash
-sudo apt install ./clipify_0.1.0_amd64.deb
+sudo apt install ./clipify_0.1.1_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the German and English **Fast** OCR models and adds Clipify to the application menu.
 
-On Zorin or GNOME, run `clipify-setup-gnome` once as your desktop user. Then open **Clipify** from the application menu.
+Open **Clipify** from the application menu. On Zorin or GNOME, Clipify sets up available global shortcuts automatically on first launch.
 
 ## Build and run from source
 
 Follow the [source build instructions](README.md#build-from-source) to install the dependencies, clone the repository, and compile Clipify. If you already have a checkout, run the CMake commands from its root. In the development workspace, the client checkout is named `CLI/`.
 
-On Zorin or GNOME, run `/usr/bin/python3 scripts/setup-gnome-shortcut.py` from the checkout before launching `./build/clipify`.
+Run `./build/clipify` from the checkout. The build includes the GNOME shortcut setup helper.
 
 To add the source build to your application menu and give it the Clipify taskbar icon, install it for your user account:
 
@@ -36,7 +36,7 @@ cpack --config build/CPackConfig.cmake -G DEB -B build/packages
 
 ## Global shortcuts on GNOME
 
-GNOME stores key bindings per user. Run the setup command from your desktop session. If Clipify is running, choose **Quit** in the tray menu and start it again after setup. Run setup again after an update that adds new shortcut actions. The script preserves your existing Clipify bindings.
+GNOME stores key bindings per user. On launch, Clipify adds missing actions and preserves your existing Clipify bindings. When GNOME already uses `Super+V`, Clipify tries `Super+Shift+V`. For other conflicts, Clipify shows a message and lets you choose a free shortcut.
 
 | Default | Action |
 | --- | --- |

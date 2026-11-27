@@ -1,6 +1,9 @@
 #!/usr/bin/python3
 """Register Clipify's history and screenshot shortcuts in GNOME Settings."""
 
+import re
+import sys
+
 from gi.repository import Gio
 
 media_keys_schema = "org.gnome.settings-daemon.plugins.media-keys"
@@ -10,9 +13,42 @@ prefix = "/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/"
 service = "io.github.riccify.Clipify"
 object_path = "/io/github/riccify/Clipify"
 
+def normalized(binding):
+    modifiers = re.findall(r"<([^>]+)>", binding.casefold())
+    aliases = {"ctrl": "control", "ctl": "control", "mod1": "alt", "mod4": "super"}
+    return tuple(sorted(aliases.get(modifier, modifier) for modifier in modifiers)), re.sub(r"<[^>]+>", "", binding.casefold())
+
+
 settings = Gio.Settings.new(media_keys_schema)
 paths = settings.get_strv(keybindings_key)
-configured = []
+occupied = {}
+schemas = Gio.SettingsSchemaSource.get_default()
+for schema_id in (
+    "org.gnome.shell.keybindings",
+    "org.gnome.desktop.wm.keybindings",
+    "org.gnome.mutter.keybindings",
+    media_keys_schema,
+):
+    schema = schemas.lookup(schema_id, True)
+    if schema is None:
+        continue
+    desktop = Gio.Settings.new(schema_id)
+    for key in schema.list_keys():
+        if key == keybindings_key:
+            continue
+        value = desktop.get_value(key)
+        if value.get_type_string() in ("s", "as"):
+            bindings = [value.unpack()] if value.get_type_string() == "s" else value.unpack()
+            for binding in bindings:
+                if binding and binding != "disabled":
+                    occupied[normalized(binding)] = key
+
+for path in paths:
+    shortcut = Gio.Settings.new_with_path(custom_key_schema, path)
+    binding = shortcut.get_string("binding")
+    if binding:
+        occupied[normalized(binding)] = shortcut.get_string("name") or path
+
 for name, label, default, service_suffix, object_suffix, method in (
     ("clipify", "Clipify History", "<Super>v", "", "", "ShowHistory"),
     ("clipify-screen", "Clipify Screenshot Selection", "<Super><Shift>s", ".Screen", "/Screen", "CaptureScreen"),
@@ -22,24 +58,27 @@ for name, label, default, service_suffix, object_suffix, method in (
 ):
     path = prefix + name + "/"
     shortcut = Gio.Settings.new_with_path(custom_key_schema, path)
-    accelerator = (shortcut.get_string("binding") if path in paths else "") or default
-    if name == "clipify-screen" and accelerator == "<Control><Shift><Super>s":
-        accelerator = default
-    for other_path in paths:
-        other = Gio.Settings.new_with_path(custom_key_schema, other_path)
-        if accelerator and other_path != path and other.get_string("binding").casefold() == accelerator.casefold():
-            raise SystemExit(f"{accelerator} is already assigned to another custom shortcut.")
-    if accelerator and any(item[3].casefold() == accelerator.casefold() for item in configured):
-        raise SystemExit(f"{accelerator} is already assigned to another Clipify shortcut.")
-    configured.append((path, shortcut, label, accelerator, service_suffix, object_suffix, method))
+    if path in paths:
+        continue
 
-for path, shortcut, label, accelerator, service_suffix, object_suffix, method in configured:
+    accelerator = default
+    conflict = occupied.get(normalized(accelerator))
+    fallback = "<Super><Shift>v"
+    if conflict and name == "clipify" and normalized(fallback) not in occupied:
+        accelerator = fallback
+        print(f"{label}: Super+V is already used by {conflict}. Clipify uses Super+Shift+V.", file=sys.stderr)
+    elif conflict:
+        print(f"{label}: {accelerator} is already used by {conflict}. Choose a free shortcut in Clipify.", file=sys.stderr)
+        accelerator = ""
+    if accelerator:
+        occupied[normalized(accelerator)] = label
+
     shortcut.set_string("name", label)
     shortcut.set_string("command", f"gdbus call --session --dest {service}{service_suffix} "
                         f"--object-path {object_path}{object_suffix} --method {service}.{method}")
     shortcut.set_string("binding", accelerator)
-    if path not in paths:
-        paths.append(path)
+    paths.append(path)
 
-settings.set_strv(keybindings_key, paths)
+if paths != settings.get_strv(keybindings_key):
+    settings.set_strv(keybindings_key, paths)
 Gio.Settings.sync()

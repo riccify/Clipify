@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Clipify VERSION 0.1.0 LANGUAGES CXX)
+project(Clipify VERSION 0.1.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -32,6 +32,7 @@ qt_add_resources(clipify "clipify_branding"
 target_link_libraries(clipify PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Widgets)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    configure_file(scripts/setup-gnome-shortcut.py clipify-setup-gnome COPYONLY)
     find_package(X11 REQUIRED)
     find_package(Qt6 6.4 REQUIRED COMPONENTS DBus)
     target_compile_definitions(clipify PRIVATE CLIPIFY_X11)

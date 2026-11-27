@@ -207,8 +207,7 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
             && bus.registerService(service)) {
             platform_->ready = true;
             const QString accelerator = readGnomeShortcut(desktopShortcutPath);
-            if (!accelerator.isEmpty())
-                shortcut_ = shortcutLabel(accelerator);
+            shortcut_ = shortcutLabel(accelerator);
             return;
         }
 
