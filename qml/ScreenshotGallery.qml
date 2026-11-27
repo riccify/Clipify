@@ -7,42 +7,49 @@ Item {
 
     required property var screenshots
     signal trashRequested(string url)
-    property string selectedUrl: ""
-    readonly property int selectedIndex: screenshots.findIndex(item => item.url === selectedUrl)
-    readonly property var selected: selectedIndex >= 0 ? screenshots[selectedIndex] : null
 
-    function showScreenshot(index, direction) {
-        if (index < 0 || index >= screenshots.length)
-            return
+    function updateModel() {
+        const urls = new Set(screenshots.map(screenshot => screenshot.url))
+        for (let index = screenshotModel.count - 1; index >= 0; --index) {
+            if (!urls.has(screenshotModel.get(index).imageUrl))
+                screenshotModel.remove(index)
+        }
 
-        imageTransition.stop()
-        slide.x = direction * 24
-        previewImage.opacity = 0
-        selectedUrl = screenshots[index].url
-        viewer.forceActiveFocus()
+        for (let index = 0; index < screenshots.length; ++index) {
+            const screenshot = screenshots[index]
+            let previous = index
+            while (previous < screenshotModel.count && screenshotModel.get(previous).imageUrl !== screenshot.url)
+                ++previous
+
+            if (previous === screenshotModel.count)
+                screenshotModel.insert(index, {imageUrl: screenshot.url, imageName: screenshot.name})
+            else if (previous !== index)
+                screenshotModel.move(previous, index, 1)
+        }
     }
 
-    function closeViewer() {
-        selectedUrl = ""
-        grid.forceActiveFocus()
-    }
+    onScreenshotsChanged: updateModel()
+    Component.onCompleted: updateModel()
+
+    ListModel { id: screenshotModel }
 
     GridView {
         id: grid
         anchors.fill: parent
-        visible: !gallery.selected
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         readonly property int columns: Math.max(2, Math.floor(width / 215))
         cellWidth: Math.floor(width / columns)
         cellHeight: 151
-        model: gallery.screenshots
+        model: screenshotModel
         ScrollBar.vertical: ScrollBar {}
 
         delegate: Item {
             id: card
-            required property var modelData
-            required property int index
+            required property string imageUrl
+            required property string imageName
+            property real removalOffset: 0
+            transform: Translate { x: card.removalOffset }
             width: grid.cellWidth - 10
             height: grid.cellHeight - 10
 
@@ -53,8 +60,8 @@ Item {
                 anchors.fill: parent
                 padding: 6
                 hoverEnabled: true
-                Accessible.name: card.modelData.name
-                onClicked: gallery.showScreenshot(card.index, 1)
+                Accessible.name: card.imageName
+                onClicked: Qt.openUrlExternally(card.imageUrl)
 
                 background: Rectangle {
                     radius: 9
@@ -80,7 +87,7 @@ Item {
 
                         Image {
                             anchors.fill: parent
-                            source: card.modelData.url
+                            source: card.imageUrl
                             sourceSize: Qt.size(360, 220)
                             asynchronous: true
                             fillMode: Image.PreserveAspectCrop
@@ -92,7 +99,7 @@ Item {
                         Layout.leftMargin: 4
                         Layout.bottomMargin: 3
                         Layout.rightMargin: 30
-                        text: card.modelData.name
+                        text: card.imageName
                         color: "#ededed"
                         font.pixelSize: 12
                         elide: Text.ElideRight
@@ -113,7 +120,7 @@ Item {
                 opacity: cardHover.hovered || activeFocus ? 1 : 0
                 Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
                 Accessible.name: qsTr("Move screenshot to trash")
-                onClicked: gallery.trashRequested(card.modelData.url)
+                onClicked: gallery.trashRequested(card.imageUrl)
             }
         }
 
@@ -121,8 +128,14 @@ Item {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 180 }
         }
 
+        remove: Transition {
+            NumberAnimation { property: "opacity"; to: 0; duration: 160 }
+            NumberAnimation { property: "scale"; to: 0.96; duration: 160; easing.type: Easing.InCubic }
+            NumberAnimation { property: "removalOffset"; to: 24; duration: 160; easing.type: Easing.InCubic }
+        }
+
         displaced: Transition {
-            NumberAnimation { properties: "x,y"; duration: 200; easing.type: Easing.OutCubic }
+            NumberAnimation { properties: "x,y"; duration: 220; easing.type: Easing.OutCubic }
         }
     }
 
@@ -131,87 +144,5 @@ Item {
         visible: gallery.screenshots.length === 0
         text: qsTr("Your screenshots will appear here.")
         color: "#b5b5b5"
-    }
-
-    FocusScope {
-        id: viewer
-        anchors.fill: parent
-        visible: !!gallery.selected
-
-        Keys.onEscapePressed: gallery.closeViewer()
-        Keys.onLeftPressed: gallery.showScreenshot(gallery.selectedIndex - 1, -1)
-        Keys.onRightPressed: gallery.showScreenshot(gallery.selectedIndex + 1, 1)
-
-        ColumnLayout {
-            anchors.fill: parent
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-
-                Button {
-                    text: qsTr("Back to gallery")
-                    onClicked: gallery.closeViewer()
-                }
-
-                Label {
-                    Layout.fillWidth: true
-                    text: gallery.selected ? gallery.selected.name : ""
-                    color: "#f2f2f2"
-                    elide: Text.ElideRight
-                    horizontalAlignment: Text.AlignHCenter
-                }
-
-                Button {
-                    text: "‹"
-                    Accessible.name: qsTr("Previous screenshot")
-                    enabled: gallery.selectedIndex > 0
-                    onClicked: gallery.showScreenshot(gallery.selectedIndex - 1, -1)
-                }
-
-                Button {
-                    text: "›"
-                    Accessible.name: qsTr("Next screenshot")
-                    enabled: gallery.selectedIndex + 1 < gallery.screenshots.length
-                    onClicked: gallery.showScreenshot(gallery.selectedIndex + 1, 1)
-                }
-            }
-
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                color: "#191919"
-                radius: 8
-                border.color: "#404040"
-                clip: true
-
-                Image {
-                    id: previewImage
-                    anchors.fill: parent
-                    anchors.margins: 9
-                    source: gallery.selected ? gallery.selected.url : ""
-                    asynchronous: true
-                    fillMode: Image.PreserveAspectFit
-                    transform: Translate { id: slide }
-                    onStatusChanged: {
-                        if (status === Image.Ready)
-                            imageTransition.restart()
-                    }
-                }
-
-                Label {
-                    anchors.centerIn: parent
-                    visible: previewImage.status === Image.Error
-                    text: qsTr("Could not load the screenshot.")
-                    color: "#b5b5b5"
-                }
-            }
-        }
-    }
-
-    ParallelAnimation {
-        id: imageTransition
-        NumberAnimation { target: slide; property: "x"; to: 0; duration: 220; easing.type: Easing.OutCubic }
-        NumberAnimation { target: previewImage; property: "opacity"; to: 1; duration: 190 }
     }
 }

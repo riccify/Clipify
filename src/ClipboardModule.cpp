@@ -123,18 +123,40 @@ QHash<int, QByteArray> ClipboardModule::roleNames() const
             {IsImage, "isImage"}, {EntryId, "entryId"}};
 }
 
+void ClipboardModule::setHistorySearch(const QString &text)
+{
+    const QString search = text.trimmed();
+    if (historySearch_ == search)
+        return;
+
+    historySearch_ = search;
+    beginResetModel();
+    entries_.clear();
+    hasOlderEntries_ = true;
+    endResetModel();
+    emit hasOlderEntriesChanged();
+    loadOlderEntries();
+}
+
 void ClipboardModule::loadOlderEntries()
 {
     if (!database_.isOpen() || !hasOlderEntries_)
         return;
 
     QSqlQuery query(database_);
-    const QString filter = entries_.isEmpty() ? QString() : QStringLiteral("WHERE id < ? ");
+    QStringList filters;
+    if (!entries_.isEmpty())
+        filters.append("id < ?");
+    if (!historySearch_.isEmpty())
+        filters.append("instr(lower(text), lower(?)) > 0");
+    const QString filter = filters.isEmpty() ? QString() : "WHERE " + filters.join(" AND ") + ' ';
     const QString sql = "SELECT id, text, copied_at_ms, image_png IS NOT NULL FROM clipboard_entries "
                         + filter + "ORDER BY id DESC LIMIT ?";
     if (query.prepare(sql)) {
         if (!entries_.isEmpty())
             query.addBindValue(entries_.last().id);
+        if (!historySearch_.isEmpty())
+            query.addBindValue(historySearch_);
         query.addBindValue(historyPageSize + 1);
         if (query.exec()) {
             QVector<Entry> page;
@@ -312,25 +334,36 @@ void ClipboardModule::recordCopy()
             setStorageError(tr("Could not store the clipboard image."));
             return;
         }
-        if (!entries_.isEmpty() && entries_.first().isImage && entries_.first().text == text) {
-            QSqlQuery previous(database_);
-            previous.prepare("SELECT image_png FROM clipboard_entries WHERE id = ?");
-            previous.addBindValue(entries_.first().id);
-            if (previous.exec() && previous.next() && previous.value(0).toByteArray() == png)
-                return;
-        }
-    } else if (text.isEmpty() || (!entries_.isEmpty() && !entries_.first().isImage
-                                && entries_.first().text == text)) {
+    } else if (text.isEmpty()) {
         return;
     }
+
+    const QVariant imageData = isImage ? QVariant(png) : QVariant(QMetaType::fromType<QByteArray>());
+    QSqlQuery previous(database_);
+    previous.prepare("SELECT 1 FROM (SELECT text, image_png FROM clipboard_entries ORDER BY id DESC LIMIT 1) "
+                     "WHERE text = ? AND image_png IS ?");
+    previous.addBindValue(text);
+    previous.addBindValue(imageData);
+    if (previous.exec() && previous.next())
+        return;
 
     const qint64 copiedAt = QDateTime::currentMSecsSinceEpoch();
     QSqlQuery insert(database_);
     if (insert.prepare("INSERT INTO clipboard_entries (text, copied_at_ms, image_png) VALUES (?, ?, ?)")) {
         insert.addBindValue(text);
         insert.addBindValue(copiedAt);
-        insert.addBindValue(isImage ? QVariant(png) : QVariant(QMetaType::fromType<QByteArray>()));
+        insert.addBindValue(imageData);
         if (insert.exec()) {
+            if (!historySearch_.isEmpty()) {
+                QSqlQuery match(database_);
+                match.prepare("SELECT instr(lower(?), lower(?)) > 0");
+                match.addBindValue(text);
+                match.addBindValue(historySearch_);
+                if (!match.exec() || !match.next() || !match.value(0).toBool()) {
+                    setStorageError({});
+                    return;
+                }
+            }
             const bool previouslyHadOlderEntries = hasOlderEntries();
             beginInsertRows({}, 0, 0);
             entries_.prepend({insert.lastInsertId().toLongLong(), text,

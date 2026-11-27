@@ -27,6 +27,7 @@ public:
     QVariant data(const QModelIndex &index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
     Q_INVOKABLE void loadOlderEntries();
+    Q_INVOKABLE void setHistorySearch(const QString &text);
     Q_INVOKABLE void copyEntry(int row);
     Q_INVOKABLE bool copyEntryById(const QString &entryId);
     Q_INVOKABLE void previewEntry(const QString &entryId);
@@ -60,4 +61,5 @@ private:
     QString currentText_;
     QVector<Entry> entries_;
     bool hasOlderEntries_ = true;
+    QString historySearch_;
 };

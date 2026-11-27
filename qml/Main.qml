@@ -23,6 +23,7 @@ ApplicationWindow {
     readonly property color textColor: "#f2f2f2"
     readonly property color mutedColor: "#b5b5b5"
     readonly property color accentColor: "#d6d6d6"
+    readonly property int sidebarButtonRadius: 10
     readonly property bool maximized: visibility === Window.Maximized
     property string currentModule: "clipboard"
     onCurrentModuleChanged: {
@@ -128,6 +129,11 @@ ApplicationWindow {
                 ctx.lineTo(2, 15)
                 ctx.closePath()
                 break
+            case "search":
+                ctx.arc(7.5, 7.5, 4.5, 0, Math.PI * 2)
+                ctx.moveTo(11, 11)
+                ctx.lineTo(15, 15)
+                break
             case "about":
                 ctx.arc(9, 9, 6.5, 0, Math.PI * 2)
                 ctx.moveTo(9, 7.7)
@@ -213,7 +219,7 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            radius: 10
+            radius: window.sidebarButtonRadius
             color: clipboardButton.down ? "#bfbfbf"
                  : clipboardButton.hovered ? (clipboardButton.highlighted ? "#e3e3e3" : "#303030")
                  : clipboardButton.highlighted ? window.accentColor : "transparent"
@@ -492,38 +498,41 @@ ApplicationWindow {
                 color: window.chromeDividerColor
             }
 
-            Label {
-                anchors.left: sidebarLogo.right
-                anchors.leftMargin: 8
-                anchors.verticalCenter: sidebarLogo.verticalCenter
-                text: "Clipify"
-                color: window.textColor
-                font.pixelSize: 18
-                font.weight: Font.DemiBold
-            }
-
-            Image {
-                id: sidebarLogo
+            RowLayout {
+                id: sidebarBrand
                 anchors.top: parent.top
-                anchors.topMargin: 8
-                anchors.left: parent.left
-                anchors.leftMargin: 13
-                width: 32
-                height: 32
-                source: "qrc:/clipify/assets/clipify-app-icon.png"
-                fillMode: Image.PreserveAspectFit
-                smooth: true
-                mipmap: true
+                anchors.topMargin: 16
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 8
+
+                Image {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    source: "qrc:/clipify/assets/clipify-app-icon.png"
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    mipmap: true
+                }
+
+                Label {
+                    text: "Clipify"
+                    color: window.textColor
+                    font.pixelSize: 18
+                    font.weight: Font.DemiBold
+                }
             }
 
             ModuleButton {
-                y: 58
+                id: clipboardNavButton
+                anchors.top: sidebarBrand.bottom
+                anchors.topMargin: 24
                 module: "clipboard"
                 text: qsTr("Clipboard")
             }
 
             ModuleButton {
-                y: 106
+                anchors.top: clipboardNavButton.bottom
+                anchors.topMargin: 6
                 module: "screen"
                 text: qsTr("Screen")
             }
@@ -566,7 +575,7 @@ ApplicationWindow {
                 }
 
                 background: Rectangle {
-                    radius: height / 2
+                    radius: window.sidebarButtonRadius
                     color: exitButton.down ? "#414141" : exitButton.hovered ? "#303030" : "transparent"
                     border.color: window.accentColor
                     border.width: exitButton.visualFocus ? 1 : 0
@@ -951,12 +960,57 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
 
-                Label {
+                RowLayout {
                     Layout.topMargin: 8
-                    text: qsTr("History")
-                    color: window.textColor
-                    font.pixelSize: 19
-                    font.weight: Font.DemiBold
+                    Layout.fillWidth: true
+                    spacing: 12
+
+                    Label {
+                        text: qsTr("History")
+                        color: window.textColor
+                        font.pixelSize: 19
+                        font.weight: Font.DemiBold
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    TextField {
+                        id: historySearch
+                        Layout.preferredWidth: 210
+                        Layout.minimumWidth: 130
+                        Accessible.name: qsTr("Search history")
+                        placeholderText: qsTr("Search history")
+                        placeholderTextColor: window.mutedColor
+                        color: window.textColor
+                        leftPadding: 32
+                        selectByMouse: true
+                        onTextChanged: historySearchDelay.restart()
+
+                        background: Rectangle {
+                            radius: 7
+                            color: "#232323"
+                            border.color: historySearch.activeFocus ? window.accentColor : window.borderColor
+                            Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        }
+
+                        LineIcon {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 9
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 18
+                            height: 18
+                            symbol: "search"
+                        }
+                    }
+                }
+
+                Timer {
+                    id: historySearchDelay
+                    interval: 90
+                    onTriggered: {
+                        clipboardModule.setHistorySearch(historySearch.text)
+                        history.positionViewAtBeginning()
+                    }
                 }
 
                 Item {
@@ -1102,7 +1156,8 @@ ApplicationWindow {
                     Label {
                         anchors.centerIn: parent
                         visible: history.count === 0 && !clipboardModule.storageError
-                        text: qsTr("Copy text or an image to see it here.")
+                        text: historySearch.text.trim().length > 0 ? qsTr("No matching entries.")
+                                                                     : qsTr("Copy text or an image to see it here.")
                         color: window.mutedColor
                         font.pixelSize: 14
                     }
