@@ -4,6 +4,20 @@
 
 Clipify is a modular desktop toolbox for everyday shortcuts. It remembers copied text and images, captures screenshots, and copies text from a screen selection using local OCR.
 
+## Quick Install
+
+For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.0_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.0/clipify_0.1.0_amd64.deb), then open a terminal in the download folder and run:
+
+```bash
+sudo apt install ./clipify_0.1.0_amd64.deb
+```
+
+The package contains the prebuilt app. APT installs the required Qt runtime and the **Fast** OCR models for German and English, then adds **Clipify** to your app menu. **You can launch Clipify right away without compiling anything.**
+
+**Zorin and GNOME:** To enable global shortcuts such as `Super+V`, run `clipify-setup-gnome` once in your desktop session, then launch Clipify from the app menu. Restart Clipify if it was already running.
+
+[Build from source](#build-from-source) · [Detailed installation guide](Installer.md)
+
 ## Clipboard history
 
 - Press <kbd>Super</kbd> + <kbd>V</kbd> to open the history at your mouse pointer. Type to filter, use <kbd>↑</kbd> and <kbd>↓</kbd> to select, then press <kbd>Enter</kbd> to paste back into the previous window. <kbd>Esc</kbd> dismisses the popup.
@@ -22,21 +36,7 @@ Press <kbd>Alt</kbd> + <kbd>Print</kbd> to select an area and copy its text. Cli
 
 Clipify saves a numbered PNG in `Pictures/Screenshots` and copies the image to the clipboard. Use the eye icon on an image entry to open a preview. Open **Screen** to browse the screenshot gallery and change the shortcuts.
 
-## Install
-
-Clipify currently targets **Zorin OS 18.1 and Ubuntu 24.04 on X11**. The `.deb` is built for 64-bit Intel and AMD PCs (`amd64`).
-
-### Quick install from a .deb
-
-Open a terminal in the folder containing the package and run:
-
-```bash
-sudo apt install ./clipify_0.1.0_amd64.deb
-```
-
-APT installs the Qt runtime and the German and English OCR models for **Fast** mode. On Zorin or GNOME, run `clipify-setup-gnome` once as your desktop user to set up global shortcuts, then open **Clipify** from the app menu.
-
-### Build from source
+## Build from source
 
 Install the build tools, Qt modules, and OCR dependencies:
 

@@ -10,7 +10,7 @@ From the folder containing the package, run:
 sudo apt install ./clipify_0.1.0_amd64.deb
 ```
 
-APT resolves the runtime dependencies, including Qt and the German and English **Fast** OCR models. The package adds Clipify to the application menu.
+The package contains the prebuilt app. APT installs the required Qt runtime and the German and English **Fast** OCR models and adds Clipify to the application menu.
 
 On Zorin or GNOME, run `clipify-setup-gnome` once as your desktop user. Then open **Clipify** from the application menu.
 
