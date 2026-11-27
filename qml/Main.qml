@@ -7,7 +7,7 @@ ApplicationWindow {
     id: window
 
     width: 1040
-    height: 680
+    height: Math.min(860, Screen.desktopAvailableHeight)
     minimumWidth: 680
     minimumHeight: 500
     visible: !startInTray
@@ -95,6 +95,8 @@ ApplicationWindow {
         highlighted: window.currentModule === module
         onClicked: window.currentModule = module
 
+        CursorTooltip { text: qsTr("Open %1").arg(clipboardButton.text) }
+
         contentItem: RowLayout {
             spacing: 8
 
@@ -155,6 +157,26 @@ ApplicationWindow {
         }
     }
 
+    component ConfigAction: AboutAction {
+        id: configAction
+        required property string iconSymbol
+
+        contentItem: RowLayout {
+            spacing: 7
+
+            LineIcon {
+                symbol: configAction.iconSymbol
+                ink: window.textColor
+            }
+
+            Label {
+                text: configAction.text
+                color: window.textColor
+                font: configAction.font
+            }
+        }
+    }
+
     component FolderSetting: Panel {
         id: folderSetting
         required property string folder
@@ -189,15 +211,17 @@ ApplicationWindow {
                     textFormat: Text.PlainText
                     color: window.mutedColor
                     elide: Text.ElideMiddle
-                    HoverHandler { id: folderHover }
-                    ToolTip.visible: folderHover.hovered && truncated
-                    ToolTip.text: text
+                    CursorTooltip {
+                        text: parent.text
+                        available: parent.truncated
+                    }
                 }
             }
 
             Button {
                 id: chooseFolderButton
                 text: qsTr("Choose folder…")
+                CursorTooltip { text: qsTr("Choose a folder for newly saved files.") }
                 hoverEnabled: true
                 onClicked: folderSetting.chooseRequested()
 
@@ -267,8 +291,10 @@ ApplicationWindow {
                 enabled: shortcutController.canChangeShortcut
                 text: recording ? qsTr("Recording…") : (shortcutController.shortcut || qsTr("Choose shortcut"))
                 Accessible.name: qsTr("Choose %1: %2").arg(heading).arg(text)
-                ToolTip.visible: hovered && !recording
-                ToolTip.text: shortcutController.error || qsTr("Choose shortcut")
+                CursorTooltip {
+                    text: shortcutController.error || qsTr("Choose shortcut")
+                    available: !parent.recording
+                }
 
                 background: Rectangle {
                     radius: 7
@@ -417,9 +443,9 @@ ApplicationWindow {
             Behavior on color { ColorAnimation { duration: 100 } }
         }
 
-        ToolTip.visible: hovered
-        ToolTip.delay: 550
-        ToolTip.text: Accessible.name
+        CursorTooltip {
+            text: parent.Accessible.name
+        }
     }
 
     RowLayout {
@@ -532,6 +558,7 @@ ApplicationWindow {
                 anchors.margins: 13
                 height: 42
                 text: qsTr("Exit")
+                CursorTooltip { text: qsTr("Quit Clipify and stop its background tools.") }
                     enabled: !releaseCheck.busy
                 leftPadding: 13
                 hoverEnabled: true
@@ -658,14 +685,41 @@ ApplicationWindow {
                 Layout.margins: 22
                 spacing: 12
 
-                ShortcutSetting {
-                    heading: qsTr("Start or stop dictation")
-                    shortcutController: whisperShortcut
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: whisperShortcuts.implicitHeight
+
+                    ColumnLayout {
+                        id: whisperShortcuts
+                        anchors.fill: parent
+                        spacing: 0
+
+                        ShortcutSetting {
+                            grouped: true
+                            heading: qsTr("Start or stop dictation")
+                            shortcutController: whisperShortcut
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 14
+                            implicitHeight: 1
+                            color: window.borderColor
+                        }
+
+                        ShortcutSetting {
+                            grouped: true
+                            heading: qsTr("Pause or resume dictation history")
+                            shortcutController: pauseDictationShortcut
+                        }
+                    }
                 }
 
                 WhisperView {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    onLlmSettingsRequested: window.currentModule = "settings"
                 }
             }
 
@@ -730,101 +784,133 @@ ApplicationWindow {
                 Layout.margins: 22
                 spacing: 14
 
-                Panel {
+                ScrollView {
+                    id: settingsScroll
                     Layout.fillWidth: true
-                    implicitHeight: autoStartRow.implicitHeight + 20
+                    Layout.fillHeight: true
+                    contentWidth: availableWidth
+                    clip: true
+                    ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 
-                    RowLayout {
-                        id: autoStartRow
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 20
+                    ColumnLayout {
+                        width: settingsScroll.availableWidth
+                        spacing: 14
 
-                        Label {
+                        Panel {
                             Layout.fillWidth: true
-                            text: qsTr("Auto Start")
-                            color: window.textColor
-                            font.pixelSize: 14
-                            font.weight: Font.DemiBold
-                        }
+                            implicitHeight: llmSettings.implicitHeight + 32
 
-                        CheckBox {
-                            Accessible.name: qsTr("Auto Start")
-                            checked: appConfig.autoStart
-                            nextCheckState: function() {
-                                appConfig.setAutoStart(!appConfig.autoStart)
-                                return appConfig.autoStart ? Qt.Checked : Qt.Unchecked
+                            LlmSettings {
+                                id: llmSettings
+                                anchors.fill: parent
+                                anchors.margins: 16
                             }
                         }
-                    }
-                }
 
-                Panel {
-                    Layout.fillWidth: true
-                    implicitHeight: activeConfigRow.implicitHeight + 20
-
-                    RowLayout {
-                        id: activeConfigRow
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 20
-                        spacing: 12
-
-                        LineIcon { symbol: "folder" }
-
-                        ColumnLayout {
+                        Panel {
                             Layout.fillWidth: true
-                            spacing: 4
+                            implicitHeight: autoStartRow.implicitHeight + 20
 
-                            Label {
-                                text: qsTr("Active config")
-                                color: window.textColor
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                            }
+                            RowLayout {
+                                id: autoStartRow
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 20
 
-                            Label {
-                                Layout.fillWidth: true
-                                text: appConfig.activePath
-                                textFormat: Text.PlainText
-                                color: window.mutedColor
-                                elide: Text.ElideMiddle
-                                HoverHandler { id: configPathHover }
-                                ToolTip.visible: configPathHover.hovered && truncated
-                                ToolTip.text: text
+                                spacing: 8
+
+                                LineIcon { symbol: "fast" }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: qsTr("Auto Start")
+                                    color: window.textColor
+                                    font.pixelSize: 14
+                                    font.weight: Font.DemiBold
+                                }
+
+                                CheckBox {
+                                    Accessible.name: qsTr("Auto Start")
+                                    CursorTooltip { text: qsTr("Start Clipify in the tray when you sign in.") }
+                                    checked: appConfig.autoStart
+                                    nextCheckState: function() {
+                                        appConfig.setAutoStart(!appConfig.autoStart)
+                                        return appConfig.autoStart ? Qt.Checked : Qt.Unchecked
+                                    }
+                                }
                             }
                         }
 
-                        AboutAction {
-                            id: openConfigFolderButton
-                            Layout.preferredWidth: 36
-                            Accessible.name: qsTr("Open config folder")
-                            ToolTip.text: Accessible.name
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 500
-                            onClicked: appConfig.openConfigFolder()
+                        Panel {
+                            Layout.fillWidth: true
+                            implicitHeight: activeConfigRow.implicitHeight + 20
 
-                            contentItem: Item {
-                                LineIcon {
-                                    anchors.centerIn: parent
-                                    symbol: "folder"
-                                    ink: window.textColor
+                            RowLayout {
+                                id: activeConfigRow
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 20
+                                spacing: 12
+
+                                LineIcon { symbol: "folder" }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+
+                                    Label {
+                                        text: qsTr("Active config")
+                                        color: window.textColor
+                                        font.pixelSize: 14
+                                        font.weight: Font.DemiBold
+                                    }
+
+                                    Label {
+                                        Layout.fillWidth: true
+                                        text: appConfig.activePath
+                                        textFormat: Text.PlainText
+                                        color: window.mutedColor
+                                        elide: Text.ElideMiddle
+                                        CursorTooltip {
+                                            text: parent.text
+                                            available: parent.truncated
+                                        }
+                                    }
+                                }
+
+                                AboutAction {
+                                    id: openConfigFolderButton
+                                    Layout.preferredWidth: 36
+                                    Accessible.name: qsTr("Open config folder")
+                                    CursorTooltip {
+                                        text: parent.Accessible.name
+                                        delay: 500
+                                    }
+                                    onClicked: appConfig.openConfigFolder()
+
+                                    contentItem: Item {
+                                        LineIcon {
+                                            anchors.centerIn: parent
+                                            symbol: "folder"
+                                            ink: window.textColor
+                                        }
+                                    }
                                 }
                             }
                         }
                     }
                 }
 
-                Item { Layout.fillHeight: true }
-
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 8
 
-                    AboutAction {
+                    ConfigAction {
+                        iconSymbol: "reset"
                         text: qsTr("Restore factory settings")
+                        CursorTooltip { text: qsTr("Reset preferences and make the local config active.") }
                         onClicked: factoryResetMessage.showConfirmation()
                     }
 
@@ -866,13 +952,17 @@ ApplicationWindow {
                         Component.onCompleted: showMessage()
                     }
 
-                    AboutAction {
+                    ConfigAction {
+                        iconSymbol: "folder"
                         text: qsTr("Load Config")
+                        CursorTooltip { text: qsTr("Choose a JSON configuration to use in Clipify.") }
                         onClicked: appConfig.loadConfig()
                     }
 
-                    AboutAction {
+                    ConfigAction {
+                        iconSymbol: "save"
                         text: qsTr("Save Config")
+                        CursorTooltip { text: qsTr("Export a copy of your current settings.") }
                         onClicked: appConfig.saveConfig()
                     }
                 }
@@ -905,6 +995,7 @@ ApplicationWindow {
                         }
                         AboutAction {
                             text: qsTr("GitHub · riccify/Clipify")
+                            CursorTooltip { text: qsTr("Open the Clipify repository in your browser.") }
                             onClicked: Qt.openUrlExternally("https://github.com/riccify/Clipify")
                         }
                     }
@@ -939,6 +1030,7 @@ ApplicationWindow {
                             RowLayout {
                                 AboutAction {
                                     text: qsTr("Check again")
+                                    CursorTooltip { text: qsTr("Check GitHub for a newer Clipify release.") }
                                     enabled: !releaseCheck.checking && !releaseCheck.busy
                                     onClicked: releaseCheck.check()
                                 }
@@ -1062,52 +1154,70 @@ ApplicationWindow {
                                     }
                                 }
 
-                                SpinBox {
-                                    id: historySize
-                                    Layout.preferredWidth: 126
+                                HistorySizeInput {
                                     Accessible.name: qsTr("Popup history size")
+                                    CursorTooltip { text: qsTr("Set how many entries appear in the clipboard popup.") }
                                     from: 1
-                                    to: 2147483647
-                                    editable: true
                                     value: clipboardModule.historyNumber
                                     onValueModified: clipboardModule.historyNumber = value
+                                }
+                            }
+                        }
 
-                                    background: Rectangle {
-                                        implicitHeight: 40
-                                        radius: height / 2
-                                        color: "#232323"
-                                        border.color: historySize.activeFocus ? window.accentColor : window.borderColor
-                                    }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 18
+                            Layout.topMargin: 5
+                            Layout.bottomMargin: 5
+                            spacing: 16
 
-                                    up.indicator: Label {
-                                        x: historySize.width - width - 4
-                                        y: 4
-                                        width: 32
-                                        height: historySize.height - 8
-                                        text: "+"
-                                        color: window.textColor
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                        background: Rectangle {
-                                            radius: height / 2
-                                            color: historySize.up.pressed ? "#545454" : "#383838"
-                                        }
-                                    }
+                            LineIcon { symbol: "history" }
 
-                                    down.indicator: Label {
-                                        x: 4
-                                        y: 4
-                                        width: 32
-                                        height: historySize.height - 8
-                                        text: "−"
-                                        color: historySize.value > historySize.from ? window.textColor : window.mutedColor
-                                        horizontalAlignment: Text.AlignHCenter
-                                        verticalAlignment: Text.AlignVCenter
-                                        background: Rectangle {
-                                            radius: height / 2
-                                            color: historySize.down.pressed ? "#545454" : "#383838"
-                                        }
-                                    }
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("History size")
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                CursorTooltip {
+                                    text: qsTr("Maximum saved entries. ∞ keeps all entries.")
+                                }
+                            }
+
+                            HistorySizeInput {
+                                Accessible.name: qsTr("History size")
+                                CursorTooltip { text: qsTr("Limit the number of saved clipboard entries. ∞ keeps all entries.") }
+                                from: 0
+                                value: clipboardModule.historyLimit
+                                onValueModified: clipboardModule.historyLimit = value
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 14
+                            Layout.rightMargin: 18
+                            spacing: 16
+
+                            LineIcon { symbol: "password-key" }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: qsTr("Skip sensitive information")
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                CursorTooltip {
+                                    text: qsTr("Skips copies marked as secret and recognizable credentials.")
+                                }
+                            }
+
+                            CheckBox {
+                                Accessible.name: qsTr("Skip sensitive information")
+                                CursorTooltip { text: qsTr("Keep marked secrets and recognizable credentials out of the history.") }
+                                checked: clipboardModule.skipSensitive
+                                nextCheckState: function() {
+                                    clipboardModule.skipSensitive = !clipboardModule.skipSensitive
+                                    return clipboardModule.skipSensitive ? Qt.Checked : Qt.Unchecked
                                 }
                             }
                         }
@@ -1124,6 +1234,12 @@ ApplicationWindow {
                             grouped: true
                             shortcutController: desktopShortcut
                             heading: qsTr("Open clipboard history")
+                        }
+
+                        ShortcutSetting {
+                            grouped: true
+                            shortcutController: pauseHistoryShortcut
+                            heading: qsTr("Pause or resume history")
                         }
                     }
                 }
@@ -1158,7 +1274,7 @@ ApplicationWindow {
                 Label {
                     Layout.fillWidth: true
                     visible: text.length > 0
-                    text: [clipboardModule.storageError, desktopShortcut.error, ocrShortcut.error, gnomeSetupWarning]
+                    text: [clipboardModule.storageError, desktopShortcut.error, pauseHistoryShortcut.error, ocrShortcut.error, gnomeSetupWarning]
                           .filter(message => message.length > 0).join("\n")
                     color: "#ffb4ab"
                     wrapMode: Text.WordWrap
@@ -1172,57 +1288,14 @@ ApplicationWindow {
                     wrapMode: Text.WordWrap
                 }
 
-                RowLayout {
+                HistoryToolbar {
+                    id: clipboardHistoryToolbar
                     Layout.topMargin: 8
-                    Layout.fillWidth: true
-                    spacing: 12
-
-                    Label {
-                        text: qsTr("History")
-                        color: window.textColor
-                        font.pixelSize: 19
-                        font.weight: Font.DemiBold
-                    }
-
-                    Item { Layout.fillWidth: true }
-
-                    TextField {
-                        id: historySearch
-                        Layout.preferredWidth: 210
-                        Layout.minimumWidth: 130
-                        Accessible.name: qsTr("Search history")
-                        placeholderText: qsTr("Search history")
-                        placeholderTextColor: window.mutedColor
-                        color: window.textColor
-                        leftPadding: 32
-                        selectByMouse: true
-                        onTextChanged: historySearchDelay.restart()
-
-                        background: Rectangle {
-                            radius: 7
-                            color: "#232323"
-                            border.color: historySearch.activeFocus ? window.accentColor : window.borderColor
-                            Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                        }
-
-                        LineIcon {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 9
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 18
-                            height: 18
-                            symbol: "search"
-                        }
-                    }
-                }
-
-                Timer {
-                    id: historySearchDelay
-                    interval: 90
-                    onTriggered: {
-                        clipboardModule.setHistorySearch(historySearch.text)
-                        history.positionViewAtBeginning()
-                    }
+                    controller: clipboardModule
+                    title: qsTr("History")
+                    clearTitle: qsTr("Clear clipboard history?")
+                    clearMessage: qsTr("All saved clipboard entries will be deleted.")
+                    onSearchApplied: history.positionViewAtBeginning()
                 }
 
                 Item {
@@ -1360,6 +1433,7 @@ ApplicationWindow {
                             Button {
                                 anchors.centerIn: parent
                                 text: qsTr("Load older entries")
+                                CursorTooltip { text: qsTr("Load the next page of clipboard history.") }
                                 onClicked: clipboardModule.loadOlderEntries()
                             }
                         }
@@ -1368,7 +1442,7 @@ ApplicationWindow {
                     Label {
                         anchors.centerIn: parent
                         visible: history.count === 0 && !clipboardModule.storageError
-                        text: historySearch.text.trim().length > 0 ? qsTr("No matching entries.")
+                        text: clipboardHistoryToolbar.searchText.trim().length > 0 ? qsTr("No matching entries.")
                                                                      : qsTr("Copy text or an image to see it here.")
                         color: window.mutedColor
                         font.pixelSize: 14

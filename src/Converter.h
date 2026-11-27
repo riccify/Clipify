@@ -65,6 +65,7 @@ private:
     QString resultName(const Entry &entry) const;
     void enqueue(Entry entry);
     void startNext();
+    void reloadTargetFormat();
     void notify(const QString &status, bool failed = false, bool saved = false);
 
     QFutureWatcher<Result> worker_;

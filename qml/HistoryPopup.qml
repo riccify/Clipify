@@ -114,6 +114,11 @@ Window {
     }
 
     Connections {
+        target: clipboardModule
+        function onHistoryCleared() { popup.entries = [] }
+    }
+
+    Connections {
         target: desktopShortcut
 
         function onActivated() {
@@ -157,13 +162,11 @@ Window {
                 font.weight: Font.DemiBold
             }
 
-            TextField {
+            AppTextField {
                 id: search
                 Layout.fillWidth: true
                 placeholderText: qsTr("Search recent copies")
-                placeholderTextColor: "#a9a9a9"
-                color: "#f2f2f2"
-                selectByMouse: true
+                CursorTooltip { text: qsTr("Filter recent entries. Use the arrow keys and Enter to paste.") }
 
                 background: Rectangle {
                     radius: 6

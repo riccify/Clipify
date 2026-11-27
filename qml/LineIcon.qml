@@ -49,6 +49,15 @@ Canvas {
             ctx.lineTo(9, 9)
             ctx.lineTo(11.5, 10.5)
             break
+        case "password-key":
+            ctx.arc(5.6, 6.2, 3.2, 0, Math.PI * 2)
+            ctx.moveTo(8, 8.4)
+            ctx.lineTo(15.4, 15.4)
+            ctx.moveTo(12.4, 12.5)
+            ctx.lineTo(14.4, 10.5)
+            ctx.moveTo(14.5, 14.5)
+            ctx.lineTo(16.2, 12.8)
+            break
         case "keys":
             ctx.rect(2, 4.5, 14, 9)
             for (let x = 5; x <= 13; x += 4) {
@@ -67,6 +76,17 @@ Canvas {
             ctx.lineTo(2, 15)
             ctx.closePath()
             break
+        case "save":
+            ctx.moveTo(3, 2.5)
+            ctx.lineTo(12.5, 2.5)
+            ctx.lineTo(15.5, 5.5)
+            ctx.lineTo(15.5, 15.5)
+            ctx.lineTo(2.5, 15.5)
+            ctx.lineTo(2.5, 2.5)
+            ctx.closePath()
+            ctx.rect(5, 2.5, 6.5, 4)
+            ctx.rect(5, 10, 8, 5.5)
+            break
         case "notes":
             ctx.strokeRect(4, 2, 10, 14)
             ctx.moveTo(7, 6)
@@ -80,6 +100,39 @@ Canvas {
             ctx.arc(7.5, 7.5, 4.5, 0, Math.PI * 2)
             ctx.moveTo(11, 11)
             ctx.lineTo(15, 15)
+            break
+        case "speech":
+            ctx.moveTo(4, 3.5)
+            ctx.lineTo(14, 3.5)
+            ctx.quadraticCurveTo(16, 3.5, 16, 5.5)
+            ctx.lineTo(16, 10.5)
+            ctx.quadraticCurveTo(16, 12.5, 14, 12.5)
+            ctx.lineTo(8, 12.5)
+            ctx.lineTo(4, 15.5)
+            ctx.lineTo(4, 12.5)
+            ctx.quadraticCurveTo(2, 12.5, 2, 10.5)
+            ctx.lineTo(2, 5.5)
+            ctx.quadraticCurveTo(2, 3.5, 4, 3.5)
+            ctx.moveTo(5.5, 7)
+            ctx.lineTo(12.5, 7)
+            ctx.moveTo(5.5, 9.5)
+            ctx.lineTo(10, 9.5)
+            break
+        case "sparkles":
+            ctx.moveTo(7, 3)
+            ctx.quadraticCurveTo(8, 8, 12, 9)
+            ctx.quadraticCurveTo(8, 10, 7, 15)
+            ctx.quadraticCurveTo(6, 10, 2, 9)
+            ctx.quadraticCurveTo(6, 8, 7, 3)
+            ctx.closePath()
+            ctx.moveTo(14, 2)
+            ctx.lineTo(14, 7)
+            ctx.moveTo(11.5, 4.5)
+            ctx.lineTo(16.5, 4.5)
+            ctx.moveTo(14.5, 11.5)
+            ctx.lineTo(14.5, 15.5)
+            ctx.moveTo(12.5, 13.5)
+            ctx.lineTo(16.5, 13.5)
             break
         case "whisper":
             ctx.moveTo(6, 5)
@@ -162,6 +215,35 @@ Canvas {
             ctx.lineTo(11.5, 11.5)
             ctx.moveTo(11.5, 6.5)
             ctx.lineTo(6.5, 11.5)
+            break
+        case "pause":
+            ctx.moveTo(6, 4)
+            ctx.lineTo(6, 14)
+            ctx.moveTo(12, 4)
+            ctx.lineTo(12, 14)
+            break
+        case "resume":
+            ctx.moveTo(6, 4)
+            ctx.lineTo(14, 9)
+            ctx.lineTo(6, 14)
+            ctx.closePath()
+            break
+        case "chevron-down":
+            ctx.moveTo(5, 7)
+            ctx.lineTo(9, 11)
+            ctx.lineTo(13, 7)
+            break
+        case "trash":
+            ctx.moveTo(3, 5)
+            ctx.lineTo(15, 5)
+            ctx.moveTo(7, 5)
+            ctx.lineTo(7, 3)
+            ctx.lineTo(11, 3)
+            ctx.lineTo(11, 5)
+            ctx.moveTo(5, 6)
+            ctx.lineTo(6, 15)
+            ctx.lineTo(12, 15)
+            ctx.lineTo(13, 6)
             break
         case "cancel":
             ctx.moveTo(5, 5)

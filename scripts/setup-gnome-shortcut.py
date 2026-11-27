@@ -51,9 +51,11 @@ for path in paths:
 
 for name, label, default, service_suffix, object_suffix, method in (
     ("clipify", "Clipify History", "<Super>v", "", "", "ShowHistory"),
+    ("clipify-pause-history", "Clipify Pause History", "<Super><Shift>p", ".PauseHistory", "/PauseHistory", "ToggleHistoryPause"),
     ("clipify-screen", "Clipify Screenshot Selection", "<Super><Shift>s", ".Screen", "/Screen", "CaptureScreen"),
     ("clipify-full-screen", "Clipify Full Screenshot", "<Control>Print", ".FullScreen", "/FullScreen", "CaptureScreen"),
     ("clipify-focused-window", "Clipify Focused Window Screenshot", "<Super>Print", ".FocusedWindow", "/FocusedWindow", "CaptureScreen"),
+    ("clipify-pause-dictation", "Clipify Pause Dictation History", "<Alt><Super>p", ".PauseDictation", "/PauseDictation", "ToggleDictationHistoryPause"),
     ("clipify-whisper", "Clipify Whisper Dictation", "<Super><Shift>d", ".Whisper", "/Whisper", "ToggleDictation"),
     ("clipify-notes", "Clipify Quick Notes", "<Super>n", ".Notes", "/Notes", "OpenNotes"),
     ("clipify-ocr", "Clipify Copy Text from Screenshot", "<Alt>Print", ".Ocr", "/Ocr", "CaptureScreen"),

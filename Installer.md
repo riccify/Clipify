@@ -7,7 +7,7 @@ These instructions cover **Zorin OS 18.1 and Ubuntu 24.04 on X11**. Run `echo "$
 From the folder containing the package, run:
 
 ```bash
-sudo apt install ./clipify_0.1.6_amd64.deb
+sudo apt install ./clipify_0.1.7_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the German and English **Fast** OCR models and adds Clipify to the application menu.
@@ -45,8 +45,10 @@ If GNOME uses `Super+N` to focus notifications, Clipify tries `Super+Shift+N` fo
 | Default | Action |
 | --- | --- |
 | `Super+V` | Open clipboard history at the pointer |
+| `Super+Shift+P` | Pause or resume clipboard history |
 | `Super+N` | Open Quick Notes at the pointer |
 | `Super+Shift+D` | Start or stop Whisper dictation |
+| `Super+Alt+P` | Pause or resume dictation history |
 | `Super+Shift+S` | Select a screenshot region |
 | `Ctrl+Print` | Capture the monitor under the pointer |
 | `Super+Print` | Capture the focused window |
@@ -70,7 +72,7 @@ The Debian package installs the Qt image format plugins used by **Converter**, i
 
 ## Local Whisper dictation
 
-Whisper records from the default microphone on Linux. X11 supports the configurable **Super+Shift+D** hotkey while Clipify is in the tray. Choose **Toggle recording** to stop with a second press, or **Hold to talk** to stop on release. The controls under **Whisper** also start and stop recording. Clipify copies the transcript and saves it to local history. For hotkey dictation on X11, it also pastes into the previously focused application when it still has focus. Recording files are temporary and are removed when the job ends. Transcription runs offline once the executable and model are present.
+Whisper records from the default microphone on Linux. X11 supports the configurable **Super+Shift+D** hotkey while Clipify is in the tray. Choose **Toggle recording** to stop with a second press, or **Hold to talk** to stop on release. Clipify copies the transcript and saves it to local history. For hotkey dictation on X11, it also pastes into the previously focused application when it still has focus. For recognized terminals such as Warp and GNOME Terminal, Clipify uses **Ctrl+Shift+V**. Recording files are temporary and are removed when the job ends. Transcription runs offline once the executable and model are present.
 
 The current installer does not bundle Whisper yet. For a source build, install `pipewire-bin` on PipeWire systems or `alsa-utils` for the ALSA fallback. Build [whisper.cpp](https://github.com/ggml-org/whisper.cpp/tree/v1.8.7) with the following options from its checkout:
 
@@ -82,11 +84,15 @@ sh models/download-ggml-model.sh base
 
 Place `whisper-cli` next to the Clipify executable or on your `PATH`. Place `ggml-base.bin` under `whisper/` next to the Clipify executable or under `whisper/` in Clipify's user data directory. You can also select a compatible model in the app. The default **base** model supports multiple languages.
 
+For optional AI dictation polishing, open **Settings → LLM Settings**, select **Cloud LLM**, choose OpenRouter, OpenAI, or Anthropic, and verify the API key using the check button. In **Whisper**, choose a compatible model under **Model for polishing text**. Use a chat model for OpenRouter or OpenAI and a Messages API model for Anthropic. Select **None** to turn polishing off. The cloud request sends the transcript over HTTPS. API keys are stored unencrypted in the current user's native app settings, outside exported JSON configs. Local LLM support is planned.
+
+Use **Prompt** in **Whisper** to edit `prompts/dictation-polishing.md`. Development builds place it next to the executable. Linux system installs place the default in `share/clipify/prompts/` under the install prefix. When the installed file cannot be edited, Clipify opens a per-user copy. Saved edits apply to the next dictation.
+
 For future Debian packaging, ship the CPU-compatible `whisper-cli` and any required libraries under `/usr/lib/clipify/`, install the pinned multilingual model at `/usr/share/clipify/whisper/ggml-base.bin`, and include the microphone recording dependency and upstream license notices. Bundle or explicitly install the model so the first dictation works offline.
 
 ## Configuration backup
 
-Clipify starts with `config.json` in the per-user application configuration directory. **Settings → Load Config** makes the selected JSON file active. Its path is shown under **Active config**, and Clipify saves subsequent changes to that file automatically. **Save Config** exports a copy. The export includes autostart, global shortcuts, save folders, clipboard popup size, and OCR mode. Clipboard history, screenshots, and Markdown files are stored separately.
+Clipify starts with `config.json` in the per-user application configuration directory. **Settings → Load Config** makes the selected JSON file active. Its path is shown under **Active config**, and Clipify saves subsequent changes to that file automatically. **Save Config** exports a copy. The export includes autostart, global shortcuts, save folders, history limits, clipboard privacy and OCR, Converter output format, command definitions, and Whisper preferences. Clipboard history, screenshots, and Markdown files are stored separately.
 
 The same directory contains `default-config.json` with the factory settings. **Settings → Restore factory settings** applies those defaults to the local config and makes it active. External config files and saved content are kept.
 

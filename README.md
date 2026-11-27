@@ -11,20 +11,20 @@ Clipify is a modular desktop toolbox for everyday shortcuts. It runs in the syst
 | Quick Notes | A Markdown editor at the pointer, inline formatting, quick saving, and notes grouped by date |
 | Converter | Batch image conversion by drag-and-drop or paste, with single-image copy and a combined export |
 | Commands | Custom global shortcuts for shell commands and a Run button for testing them |
-| Whisper | Offline dictation with toggle and hold-to-talk modes, a transcript history, and paste into the focused app on X11 |
-| Settings | Tray autostart, JSON configuration import and export, and factory reset |
+| Whisper | Local dictation, transcript history, optional cloud text polishing, and paste into the focused app on X11 |
+| Settings | Tray autostart, cloud LLM setup, JSON configuration import and export, and factory reset |
 
 ## Quick Install
 
-For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.6_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.6/clipify_0.1.6_amd64.deb), then open a terminal in the download folder and run:
+For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.7_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.7/clipify_0.1.7_amd64.deb), then open a terminal in the download folder and run:
 
 ```bash
-sudo apt install ./clipify_0.1.6_amd64.deb
+sudo apt install ./clipify_0.1.7_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the **Fast** OCR models for German and English, then adds **Clipify** to your app menu. **You can launch Clipify right away without compiling anything.**
 
-**Whisper** requires a separate local runtime and model setup in this release. See the [Whisper installation instructions](Installer.md#local-whisper-dictation).
+**Whisper** requires a separate local runtime and model setup in this release. Set **Dictation history size** to keep the latest entries, or use **∞** for an unlimited history. See the [Whisper installation instructions](Installer.md#local-whisper-dictation).
 
 **Zorin and GNOME:** Open Clipify from the app menu. Clipify sets up available global shortcuts in your account on first launch. If GNOME already uses `Super+V`, Clipify tries `Super+Shift+V`. You can change any binding in the app.
 
@@ -37,6 +37,8 @@ The package contains the prebuilt app. APT installs the required Qt runtime and 
 - Close the main window to keep Clipify running in the system tray. Choose **Quit** from the tray or **Exit** in the sidebar to stop it.
 
 Clipboard history for text and images is stored locally in SQLite. Consecutive copies of the same text produce a single entry. The popup limit controls how many entries are shown, while saved history can be browsed in the main window.
+
+Use **Pause history** in the tray or beside the history search, or press **Super+Shift+P**, to pause or resume saving copies. **History size** caps the number of entries stored in SQLite, with **∞** keeping all entries. **Clear history** deletes the saved entries. **Skip sensitive information** is enabled by default and skips clipboard items marked as secret and recognizable credential formats. Ordinary unmarked passwords can be missed.
 
 Press <kbd>Alt</kbd> + <kbd>Print</kbd> to select an area and copy its text. Clipify recognizes German and English locally with Tesseract. Choose **Fast** or **Accurate** under **Clipboard**. The selected image stays in memory.
 
@@ -65,6 +67,10 @@ Open **Commands** to add a shell command, optionally record a global shortcut, a
 ## Whisper
 
 Press **Super+Shift+D** to start or stop local dictation on X11, or choose **Hold to talk** in Whisper. Clipify copies the transcript, saves it in **Dictation history**, and pastes into the previously focused application if it still has focus. See the [Whisper installation instructions](Installer.md#local-whisper-dictation) for the microphone tools, executable, and model.
+
+Use **Super+Alt+P** to pause or resume saving dictations. The Whisper view also lets you search, clear, and limit the saved history.
+
+For optional text polishing, choose **Cloud LLM** under **Settings → LLM Settings**, then select **OpenRouter**, **OpenAI**, or **Anthropic** and verify your API key. Pick a model from the searchable **Model for polishing text** menu in Whisper. **None** keeps dictation offline. When polishing is enabled, Clipify sends the transcript to the provider and uses the original transcript if polishing fails. Use **Prompt** to edit the Markdown instructions for the next dictation.
 
 ## Settings
 

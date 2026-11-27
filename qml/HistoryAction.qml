@@ -9,9 +9,10 @@ ToolButton {
     Layout.preferredWidth: 26
     Layout.preferredHeight: 26
     hoverEnabled: true
-    ToolTip.visible: hovered
-    ToolTip.delay: 450
-    ToolTip.text: Accessible.name
+    CursorTooltip {
+        text: parent.Accessible.name
+        delay: 450
+    }
 
     background: Rectangle {
         radius: 5

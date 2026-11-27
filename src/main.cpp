@@ -8,6 +8,7 @@
 #include "Converter.h"
 #include "CommandShortcuts.h"
 #include "WhisperModule.h"
+#include "LlmService.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -125,6 +126,7 @@ int main(int argc, char *argv[])
 
     ClipboardModule clipboard;
     DesktopShortcut desktopShortcut;
+    DesktopShortcut pauseHistoryShortcut(DesktopShortcut::Action::PauseHistory);
     DesktopShortcut screenShortcut(DesktopShortcut::Action::Screenshot);
     DesktopShortcut fullScreenShortcut(DesktopShortcut::Action::FullScreen);
     DesktopShortcut focusedWindowShortcut(DesktopShortcut::Action::FocusedWindow);
@@ -134,7 +136,9 @@ int main(int argc, char *argv[])
     Converter converter;
     CommandShortcuts commandShortcuts;
     DesktopShortcut whisperShortcut(DesktopShortcut::Action::Whisper);
-    WhisperModule whisperModule;
+    DesktopShortcut pauseDictationShortcut(DesktopShortcut::Action::PauseDictation);
+    LlmService llmService;
+    WhisperModule whisperModule(llmService);
     bool pasteDictation = false;
     bool stopOnRelease = false;
     QObject::connect(&whisperShortcut, &DesktopShortcut::pressed, &whisperModule, [&] {
@@ -175,6 +179,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("clipboardModule", &clipboard);
     engine.rootContext()->setContextProperty("windowControls", &windowControls);
     engine.rootContext()->setContextProperty("desktopShortcut", &desktopShortcut);
+    engine.rootContext()->setContextProperty("pauseHistoryShortcut", &pauseHistoryShortcut);
     engine.rootContext()->setContextProperty("screenShortcut", &screenShortcut);
     engine.rootContext()->setContextProperty("fullScreenShortcut", &fullScreenShortcut);
     engine.rootContext()->setContextProperty("focusedWindowShortcut", &focusedWindowShortcut);
@@ -187,7 +192,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("converter", &converter);
     engine.rootContext()->setContextProperty("commandShortcuts", &commandShortcuts);
     engine.rootContext()->setContextProperty("whisperShortcut", &whisperShortcut);
+    engine.rootContext()->setContextProperty("pauseDictationShortcut", &pauseDictationShortcut);
     engine.rootContext()->setContextProperty("whisperModule", &whisperModule);
+    engine.rootContext()->setContextProperty("llmService", &llmService);
     engine.load(QUrl("qrc:/qt/qml/Clipify/qml/Main.qml"));
     if (engine.rootObjects().size() != 1)
         return 1;
@@ -210,6 +217,32 @@ int main(int argc, char *argv[])
 
     QMenu trayMenu;
     auto *openAction = trayMenu.addAction(QApplication::translate("Tray", "Open Window"));
+    const auto addHistoryMenu = [&trayMenu]<typename History>(
+        History &history, const QString &pauseTitle, const QString &pausedTitle) {
+        auto *menu = trayMenu.addMenu(history.paused() ? pausedTitle : pauseTitle);
+        const auto addPause = [&](const char *label, int seconds) {
+            auto *action = menu->addAction(QApplication::translate("Tray", label));
+            QObject::connect(action, &QAction::triggered, &history, [&history, seconds] {
+                history.pauseHistory(seconds);
+            });
+        };
+        addPause("30 seconds", 30);
+        addPause("1 minute", 60);
+        addPause("10 minutes", 600);
+        addPause("30 minutes", 1800);
+        addPause("Until resumed", 0);
+        auto *resume = menu->addAction(QApplication::translate("Tray", "Resume history"));
+        resume->setVisible(history.paused());
+        QObject::connect(resume, &QAction::triggered, &history, &History::resumeHistory);
+        QObject::connect(&history, &History::pausedChanged, menu, [&history, menu, resume, pauseTitle, pausedTitle] {
+            resume->setVisible(history.paused());
+            menu->setTitle(history.paused() ? pausedTitle : pauseTitle);
+        });
+    };
+    addHistoryMenu(clipboard, QApplication::translate("Tray", "Pause history"),
+                   QApplication::translate("Tray", "History paused"));
+    addHistoryMenu(whisperModule, QApplication::translate("Tray", "Pause dictation history"),
+                   QApplication::translate("Tray", "Dictation history paused"));
     trayMenu.addSeparator();
     auto *quitAction = trayMenu.addAction(QApplication::translate("Tray", "Quit"));
     QObject::connect(&releaseCheck, &ReleaseCheck::changed, &windowControls, [&] {
@@ -227,22 +260,53 @@ int main(int argc, char *argv[])
     QSystemTrayIcon tray(icon);
     tray.setToolTip("Clipify");
     tray.setContextMenu(&trayMenu);
-    QObject::connect(&screenCapture, &ScreenCapture::screenshotSaved, &tray,
-                     [&tray](const QString &fileName) {
-        const QString title = QApplication::translate("Screen", "Screenshot saved");
-        const QString body = QApplication::translate("Screen", "%1 copied to the clipboard.").arg(fileName);
+    const auto notifyDesktop = [&tray](const QString &title, const QString &body, const QString &iconName) {
 #ifdef CLIPIFY_X11
         auto bus = QDBusConnection::sessionBus();
         if (bus.isConnected()) {
             auto notification = QDBusMessage::createMethodCall("org.freedesktop.Notifications",
                 "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify");
-            notification << QStringLiteral("Clipify") << uint(0) << QStringLiteral("camera-photo")
+            notification << QStringLiteral("Clipify") << uint(0) << iconName
                          << title << body << QStringList{} << QVariantMap{} << 4000;
             bus.asyncCall(notification);
             return;
         }
+#else
+        Q_UNUSED(iconName);
 #endif
         tray.showMessage(title, body, QSystemTrayIcon::Information, 4000);
+    };
+    QObject::connect(&screenCapture, &ScreenCapture::screenshotSaved, &tray,
+                     [notifyDesktop](const QString &fileName) {
+        const QString title = QApplication::translate("Screen", "Screenshot saved");
+        const QString body = QApplication::translate("Screen", "%1 copied to the clipboard.").arg(fileName);
+        notifyDesktop(title, body, QStringLiteral("camera-photo"));
+    });
+    QObject::connect(&pauseHistoryShortcut, &DesktopShortcut::activated, &tray, [&clipboard, notifyDesktop] {
+        if (clipboard.paused()) {
+            clipboard.resumeHistory();
+            notifyDesktop(QApplication::translate("Clipboard", "Clipboard history resumed"),
+                          QApplication::translate("Clipboard", "New copies will be saved to the history."),
+                          QStringLiteral("io.github.riccify.Clipify"));
+        } else {
+            clipboard.pauseHistory(0);
+            notifyDesktop(QApplication::translate("Clipboard", "Clipboard history paused"),
+                          QApplication::translate("Clipboard", "New copies will not be saved until you resume the history."),
+                          QStringLiteral("io.github.riccify.Clipify"));
+        }
+    });
+    QObject::connect(&pauseDictationShortcut, &DesktopShortcut::activated, &tray, [&whisperModule, notifyDesktop] {
+        if (whisperModule.paused()) {
+            whisperModule.resumeHistory();
+            notifyDesktop(QApplication::translate("Whisper", "Dictation history resumed"),
+                          QApplication::translate("Whisper", "New dictations will be saved to the history."),
+                          QStringLiteral("io.github.riccify.Clipify"));
+        } else {
+            whisperModule.pauseHistory(0);
+            notifyDesktop(QApplication::translate("Whisper", "Dictation history paused"),
+                          QApplication::translate("Whisper", "New dictations will not be saved until you resume the history."),
+                          QStringLiteral("io.github.riccify.Clipify"));
+        }
     });
     QObject::connect(openAction, &QAction::triggered, mainWindow, openWindow);
     QObject::connect(&windowControls, &WindowControls::openWindowRequested, mainWindow, openWindow);

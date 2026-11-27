@@ -1,22 +1,28 @@
 #include "WhisperModule.h"
 #include "AppConfig.h"
+#include "LlmService.h"
 
 #include <QClipboard>
 #include <QCoreApplication>
 #include <QCursor>
 #include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QLocale>
+#include <QNetworkReply>
 #include <QQuickWindow>
+#include <QSaveFile>
 #include <QScreen>
 #include <QSqlQuery>
 #include <QStandardPaths>
 #include <QThread>
+#include <QtEndian>
 #include <algorithm>
+#include <cmath>
 
 #ifdef Q_OS_LINUX
 #include <csignal>
@@ -27,6 +33,28 @@ namespace {
 constexpr auto modelKey = "whisper/modelPath";
 constexpr auto languageKey = "whisper/language";
 constexpr auto holdKey = "whisper/holdToTalk";
+constexpr auto historyLimitKey = "whisper/historyLimit";
+constexpr int waveformBars = 12;
+constexpr int samplesPerBar = 80;
+
+qint64 wavDataOffset(QFile &file)
+{
+    const QByteArray header = file.read(12);
+    if (header.size() != 12 || !header.startsWith("RIFF") || header.mid(8) != "WAVE")
+        return -1;
+
+    while (file.pos() + 8 <= file.size()) {
+        const QByteArray chunk = file.read(8);
+        if (chunk.size() != 8)
+            break;
+        if (chunk.startsWith("data"))
+            return file.pos();
+        const qint64 size = qFromLittleEndian<quint32>(chunk.constData() + 4);
+        if (!file.seek(file.pos() + size + (size & 1)))
+            break;
+    }
+    return -1;
+}
 
 QString whisperExecutable()
 {
@@ -50,25 +78,56 @@ QString defaultModel()
     return userModel;
 }
 
+constexpr auto promptName = "dictation-polishing.md";
+
+QString userPromptPath()
+{
+    const QDir data(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
+    return data.filePath(QStringLiteral("prompts/") + promptName);
+}
+
+QString polishingPromptPath()
+{
+    const auto userPath = userPromptPath();
+    if (QFileInfo::exists(userPath))
+        return userPath;
+
+    const QDir application(QCoreApplication::applicationDirPath());
+    const auto adjacent = application.filePath(QStringLiteral("prompts/") + promptName);
+#ifdef CLIPIFY_INSTALLED_PROMPT_DIR
+    if (!QFileInfo::exists(adjacent))
+        return application.filePath(QStringLiteral(CLIPIFY_INSTALLED_PROMPT_DIR "/") + promptName);
+#endif
+    return adjacent;
+}
+
 QString processDetail(QProcess &process)
 {
     return QString::fromLocal8Bit(process.readAllStandardError().right(1200)).trimmed();
 }
 }
 
-WhisperModule::WhisperModule(QObject *parent) : QObject(parent)
+WhisperModule::WhisperModule(LlmService &llm, QObject *parent) : QObject(parent), llm_(llm)
 {
-    connect(&AppConfig::instance(), &AppConfig::reloaded, this, &WhisperModule::settingsChanged);
+    waveform_.fill(0.0, waveformBars);
+    waveformTimer_.setInterval(60);
+    connect(&waveformTimer_, &QTimer::timeout, this, &WhisperModule::updateWaveform);
+    connect(&historyPause_, &HistoryPause::changed, this, &WhisperModule::pausedChanged);
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, [this] {
+        enforceHistoryLimit();
+        emit settingsChanged();
+    });
     const QDir data(QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation));
     database_ = QSqlDatabase::addDatabase("QSQLITE", "whisper-history");
     database_.setDatabaseName(data.filePath("dictation.sqlite3"));
     if (QDir().mkpath(data.absolutePath()) && database_.open()) {
         QSqlQuery schema(database_);
+        schema.exec("PRAGMA secure_delete = ON");
         if (!schema.exec("CREATE TABLE IF NOT EXISTS dictations "
                          "(id INTEGER PRIMARY KEY, text TEXT NOT NULL, created_ms INTEGER NOT NULL)"))
             database_.close();
     }
-    refreshHistory();
+    enforceHistoryLimit();
 
     recorder_.setStandardOutputFile(QProcess::nullDevice());
     whisper_.setStandardOutputFile(QProcess::nullDevice());
@@ -134,7 +193,8 @@ WhisperModule::WhisperModule(QObject *parent) : QObject(parent)
             complete(tr("No speech was transcribed."));
             return;
         }
-        saveTranscript(transcript);
+        temporary_.reset();
+        processTranscript(transcript);
     });
 }
 
@@ -158,6 +218,30 @@ void WhisperModule::setHoldToTalk(bool enabled)
 {
     if (AppConfig::instance().setValue(holdKey, enabled))
         emit settingsChanged();
+}
+
+QString WhisperModule::openPolishingPrompt() const
+{
+    QString path = polishingPromptPath();
+    const QFileInfo info(path);
+    if (!info.isFile() || !info.isReadable())
+        return tr("Could not read the dictation prompt: %1").arg(info.absoluteFilePath());
+
+    if (!info.isWritable() || !QFileInfo(info.absolutePath()).isWritable()) {
+        QFile source(path);
+        path = userPromptPath();
+        if (!source.open(QIODevice::ReadOnly) || !QDir().mkpath(QFileInfo(path).absolutePath()))
+            return tr("Could not create an editable copy of the dictation prompt.");
+        const QByteArray contents = source.readAll();
+        QSaveFile editable(path);
+        if (source.error() != QFileDevice::NoError || !editable.open(QIODevice::WriteOnly)
+            || editable.write(contents) != contents.size() || !editable.commit())
+            return tr("Could not create an editable copy of the dictation prompt.");
+    }
+
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
+        return tr("Could not open the dictation prompt: %1").arg(path);
+    return {};
 }
 
 void WhisperModule::chooseModel()
@@ -261,7 +345,9 @@ void WhisperModule::cancel()
         return;
     stopTimeout_.stop();
     setPhase(Phase::Cancelling, tr("Cancelling…"));
-    if (recorder_.state() != QProcess::NotRunning)
+    if (polishReply_)
+        polishReply_->abort();
+    else if (recorder_.state() != QProcess::NotRunning)
         recorder_.kill();
     else if (whisper_.state() != QProcess::NotRunning)
         whisper_.kill();
@@ -277,31 +363,178 @@ void WhisperModule::placeOverlay(QQuickWindow *window) const
     const auto area = screen->availableGeometry();
     window->setScreen(screen);
     window->setPosition(area.center().x() - window->width() / 2,
-                        std::max(area.top(), area.bottom() - window->height() - 28));
+                        area.top());
 }
 
-void WhisperModule::saveTranscript(const QString &text)
+void WhisperModule::updateWaveform()
 {
+    if (!temporary_)
+        return;
+
+    QFile file(temporary_->filePath("recording.wav"));
+    if (!file.open(QIODevice::ReadOnly))
+        return;
+    const qint64 offset = wavDataOffset(file);
+    if (offset < 0)
+        return;
+
+    const qint64 end = offset + ((file.size() - offset) / 2) * 2;
+    if (end <= waveformPosition_) {
+        bool changed = false;
+        for (auto &level : waveform_) {
+            const double previous = level.toDouble();
+            if (previous > 0) {
+                level = previous > 0.04 ? previous * 0.7 : 0.0;
+                changed = true;
+            }
+        }
+        if (changed)
+            emit waveformChanged();
+        return;
+    }
+
+    const qint64 start = std::max(offset, end - 2 * waveformBars * samplesPerBar);
+    if (!file.seek(start))
+        return;
+    const QByteArray samples = file.read(end - start);
+    const auto available = samples.size() / 2;
+    if (available < waveformBars)
+        return;
+    waveformPosition_ = end;
+
+    for (int bar = 0; bar < waveformBars; ++bar) {
+        const auto begin = bar * available / waveformBars;
+        const auto finish = (bar + 1) * available / waveformBars;
+        double sumSquares = 0.0;
+        for (auto sample = begin; sample < finish; ++sample) {
+            const double amplitude = qFromLittleEndian<qint16>(samples.constData() + 2 * sample) / 32768.0;
+            sumSquares += amplitude * amplitude;
+        }
+        const double rms = std::sqrt(sumSquares / (finish - begin));
+        const double level = std::clamp((rms - 0.004) * 8.0, 0.0, 1.0);
+        waveform_[bar] = std::pow(level, 0.75);
+    }
+    emit waveformChanged();
+}
+
+int WhisperModule::historyLimit() const
+{
+    return AppConfig::instance().value(historyLimitKey, 0).toInt();
+}
+
+void WhisperModule::setHistoryLimit(int limit)
+{
+    if (limit >= 0 && historyLimit() != limit && AppConfig::instance().setValue(historyLimitKey, limit)) {
+        enforceHistoryLimit();
+        emit settingsChanged();
+    }
+}
+
+bool WhisperModule::pruneHistory()
+{
+    const int limit = historyLimit();
+    if (limit == 0)
+        return true;
+
+    QSqlQuery query(database_);
+    if (!query.prepare("DELETE FROM dictations WHERE id < "
+                       "(SELECT id FROM dictations ORDER BY id DESC LIMIT 1 OFFSET ?)"))
+        return false;
+
+    query.addBindValue(limit - 1);
+    return query.exec();
+}
+
+void WhisperModule::enforceHistoryLimit()
+{
+    if (!database_.isOpen())
+        return;
+    if (pruneHistory()) {
+        refreshHistory();
+    } else if (!busy()) {
+        complete(tr("Could not apply the dictation history limit."), true);
+    }
+}
+
+void WhisperModule::processTranscript(const QString &text)
+{
+    const QString model = llm_.polishModel();
+    if (model.isEmpty() || !llm_.cloud()) {
+        saveTranscript(text);
+        return;
+    }
+
+    QFile prompt(polishingPromptPath());
+    if (!prompt.open(QIODevice::ReadOnly)) {
+        saveTranscript(text, tr("Could not read the dictation prompt."));
+        return;
+    }
+    const QString instructions = QString::fromUtf8(prompt.readAll()).trimmed();
+    if (prompt.error() != QFileDevice::NoError || instructions.isEmpty()) {
+        saveTranscript(text, tr("The dictation prompt is empty or unreadable."));
+        return;
+    }
+
+    polishReply_ = llm_.generateText(model, instructions, text, this,
+        [this, text](const QString &polished, const QString &error) {
+            polishReply_ = nullptr;
+            if (phase_ == Phase::Cancelling) {
+                complete(tr("Dictation cancelled."));
+                return;
+            }
+            saveTranscript(error.isEmpty() ? polished : text, error);
+        });
+
+    if (polishReply_)
+        setPhase(Phase::Polishing, tr("Polishing dictation with AI…"));
+    else
+        saveTranscript(text, tr("Configure a cloud provider, model and API key in LLM Settings."));
+}
+
+void WhisperModule::saveTranscript(const QString &text, const QString &polishError)
+{
+    const auto copied = [this, &polishError](const QString &status) {
+        if (polishError.isEmpty())
+            complete(status);
+        else
+            complete(tr("%1 Original text used. %2").arg(status, polishError), true);
+    };
     QGuiApplication::clipboard()->setText(text);
     emit transcriptReady();
-    QSqlQuery query(database_);
-    if (database_.isOpen() && query.prepare("INSERT INTO dictations (text, created_ms) VALUES (?, ?)")) {
-        query.addBindValue(text);
-        query.addBindValue(QDateTime::currentMSecsSinceEpoch());
-        if (query.exec()) {
-            refreshHistory();
-            complete(tr("Dictation copied."));
-            return;
-        }
+    if (paused()) {
+        copied(tr("Dictation copied. History is paused."));
+        return;
     }
-    complete(tr("Dictation copied, but it could not be saved to history."), true);
+    if (database_.isOpen() && database_.transaction()) {
+        QSqlQuery query(database_);
+        if (query.prepare("INSERT INTO dictations (text, created_ms) VALUES (?, ?)")) {
+            query.addBindValue(text);
+            query.addBindValue(QDateTime::currentMSecsSinceEpoch());
+            if (query.exec()) {
+                query.finish();
+                if (pruneHistory() && database_.commit()) {
+                    refreshHistory();
+                    copied(tr("Dictation copied."));
+                    return;
+                }
+            }
+        }
+        database_.rollback();
+    }
+    const QString historyError = tr("Dictation copied, but it could not be saved to history.");
+    complete(polishError.isEmpty() ? historyError
+                                  : tr("%1 Original text used. %2").arg(historyError, polishError), true);
 }
 
 void WhisperModule::refreshHistory()
 {
     QVariantList entries;
     QSqlQuery query(database_);
-    if (database_.isOpen() && query.exec("SELECT id, text, created_ms FROM dictations ORDER BY id DESC")) {
+    if (database_.isOpen() && query.prepare("SELECT id, text, created_ms FROM dictations "
+              "WHERE instr(lower(text), lower(?)) > 0 ORDER BY id DESC")) {
+        query.addBindValue(historySearch_.isEmpty() ? QStringLiteral("") : historySearch_);
+        if (!query.exec())
+            return;
         while (query.next()) {
             const auto date = QDateTime::fromMSecsSinceEpoch(query.value(2).toLongLong());
             const QLocale english(QLocale::English);
@@ -311,6 +544,24 @@ void WhisperModule::refreshHistory()
     }
     history_ = std::move(entries);
     emit historyChanged();
+}
+
+void WhisperModule::setHistorySearch(const QString &query)
+{
+    const QString search = query.trimmed();
+    if (search == historySearch_)
+        return;
+    historySearch_ = search;
+    refreshHistory();
+}
+
+void WhisperModule::clearHistory()
+{
+    QSqlQuery query(database_);
+    if (database_.isOpen() && query.exec("DELETE FROM dictations"))
+        refreshHistory();
+    else if (!busy())
+        complete(tr("Could not clear the dictation history."), true);
 }
 
 void WhisperModule::copyEntry(const QString &id)
@@ -337,6 +588,14 @@ void WhisperModule::deleteEntry(const QString &id)
 
 void WhisperModule::setPhase(Phase phase, const QString &status, bool failed)
 {
+    if (phase == Phase::Recording) {
+        waveformPosition_ = 0;
+        waveform_.fill(0.0, waveformBars);
+        emit waveformChanged();
+        waveformTimer_.start();
+    } else {
+        waveformTimer_.stop();
+    }
     phase_ = phase;
     status_ = status;
     failed_ = failed;

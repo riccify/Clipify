@@ -17,6 +17,7 @@
 #include <QDBusConnection>
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
+#include <X11/Xutil.h>
 #include <X11/keysym.h>
 #endif
 
@@ -32,6 +33,8 @@ struct DesktopShortcut::Platform
     Time shortcutTime = CurrentTime;
     KeyCode vKey = 0;
     KeyCode controlKey = 0;
+    KeyCode shiftKey = 0;
+    bool terminalPaste = false;
     KeyCode shortcutKey = 0;
     unsigned int shortcutMask = 0;
     bool usesGnome = false;
@@ -76,6 +79,10 @@ ShortcutDefinition shortcutDefinition(DesktopShortcut::Action action)
         return {"Super+Shift+D", "<Super><Shift>d", "whisper/shortcutAccelerator", "clipify-whisper", "Whisper"};
     case Action::Command:
         return {"", "", "", "", ""};
+    case Action::PauseDictation:
+        return {"Alt+Super+P", "<Alt><Super>p", "whisper/pauseAccelerator", "clipify-pause-dictation", "PauseDictation"};
+    case Action::PauseHistory:
+        return {"Super+Shift+P", "<Super><Shift>p", "clipboard/pauseAccelerator", "clipify-pause-history", "PauseHistory"};
     case Action::History:
         return {"Super+V", "<Super>v", "clipboard/shortcutAccelerator", "clipify", ""};
     }
@@ -83,6 +90,46 @@ ShortcutDefinition shortcutDefinition(DesktopShortcut::Action action)
 }
 
 #ifdef CLIPIFY_X11
+bool usesTerminalPaste(Display *display, Window window)
+{
+    const auto previousHandler = XSetErrorHandler([](Display *, XErrorEvent *) { return 0; });
+    static const QStringList terminalClasses{
+        QStringLiteral("dev.warp.warp"), QStringLiteral("warp-terminal"), QStringLiteral("warp"),
+        QStringLiteral("org.gnome.terminal"), QStringLiteral("gnome-terminal"),
+        QStringLiteral("gnome-terminal-server"), QStringLiteral("org.gnome.console"),
+        QStringLiteral("kgx"), QStringLiteral("xfce4-terminal"), QStringLiteral("tilix"),
+        QStringLiteral("kitty"), QStringLiteral("alacritty"), QStringLiteral("org.wezfurlong.wezterm"),
+        QStringLiteral("wezterm")
+    };
+    bool terminal = false;
+    for (int depth = 0; window != None && depth < 16; ++depth) {
+        XClassHint hint{};
+        if (XGetClassHint(display, window, &hint)) {
+            terminal = terminalClasses.contains(QString::fromLocal8Bit(hint.res_name).toLower())
+                    || terminalClasses.contains(QString::fromLocal8Bit(hint.res_class).toLower());
+        }
+        if (hint.res_name)
+            XFree(hint.res_name);
+        if (hint.res_class)
+            XFree(hint.res_class);
+        if (terminal)
+            break;
+
+        Window root = None;
+        Window parent = None;
+        Window *children = nullptr;
+        unsigned int count = 0;
+        const bool valid = XQueryTree(display, window, &root, &parent, &children, &count);
+        if (children)
+            XFree(children);
+        if (!valid || parent == root || parent == window)
+            break;
+        window = parent;
+    }
+    XSetErrorHandler(previousHandler);
+    return terminal;
+}
+
 QString shortcutPath(const ShortcutDefinition &definition)
 {
     return QStringLiteral("/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/")
@@ -196,6 +243,7 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
 
     platform_->vKey = XKeysymToKeycode(display, XK_v);
     platform_->controlKey = XKeysymToKeycode(display, XK_Control_L);
+    platform_->shiftKey = XKeysymToKeycode(display, XK_Shift_L);
     platform_->fakeKeyEvent = reinterpret_cast<Platform::FakeKeyEvent>(
         platform_->xtest.resolve("XTestFakeKeyEvent"));
     using QueryExtension = int (*)(Display *, int *, int *, int *, int *);
@@ -309,7 +357,7 @@ DesktopShortcut::~DesktopShortcut() = default;
 QVariantMap DesktopShortcut::defaultAccelerators()
 {
     QVariantMap defaults;
-    for (const auto action : {Action::History, Action::Screenshot, Action::FullScreen,
+    for (const auto action : {Action::History, Action::PauseHistory, Action::PauseDictation, Action::Screenshot, Action::FullScreen,
                               Action::FocusedWindow, Action::Ocr, Action::Notes, Action::Whisper}) {
         const auto definition = shortcutDefinition(action);
         defaults.insert(definition.settingsKey, QString::fromLatin1(definition.accelerator));
@@ -557,7 +605,20 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
 
 void DesktopShortcut::CaptureScreen()
 {
-    if (action_ != Action::History && action_ != Action::Notes && action_ != Action::Whisper && action_ != Action::Command)
+    if (action_ == Action::Screenshot || action_ == Action::FullScreen
+        || action_ == Action::FocusedWindow || action_ == Action::Ocr)
+        emit activated();
+}
+
+void DesktopShortcut::ToggleHistoryPause()
+{
+    if (action_ == Action::PauseHistory)
+        emit activated();
+}
+
+void DesktopShortcut::ToggleDictationHistoryPause()
+{
+    if (action_ == Action::PauseDictation)
         emit activated();
 }
 
@@ -587,13 +648,17 @@ bool DesktopShortcut::rememberExternalFocus()
 {
 #ifdef CLIPIFY_X11
     platform_->previousFocus = None;
+    platform_->terminalPaste = false;
     if (!platform_->display || !platform_->fakeKeyEvent || !platform_->vKey
         || !platform_->controlKey || QGuiApplication::focusWindow())
         return false;
 
     int revert = 0;
     XGetInputFocus(platform_->display, &platform_->previousFocus, &revert);
-    return platform_->previousFocus != None && platform_->previousFocus != PointerRoot;
+    if (platform_->previousFocus == None || platform_->previousFocus == PointerRoot)
+        return false;
+    platform_->terminalPaste = usesTerminalPaste(platform_->display, platform_->previousFocus);
+    return !platform_->terminalPaste || platform_->shiftKey != 0;
 #else
     return false;
 #endif
@@ -678,9 +743,10 @@ void DesktopShortcut::pasteClipboard()
     if (action_ != Action::Whisper)
         setError({});
     const QString expected = action_ == Action::Whisper ? QGuiApplication::clipboard()->text() : QString();
+    const bool terminalPaste = action_ == Action::Whisper && platform_->terminalPaste;
     auto *timer = new QTimer(this);
     timer->setInterval(20);
-    connect(timer, &QTimer::timeout, this, [this, timer, display, target, expected, attempts = 0]() mutable {
+    connect(timer, &QTimer::timeout, this, [this, timer, display, target, expected, terminalPaste, attempts = 0]() mutable {
         if (!expected.isEmpty() && QGuiApplication::clipboard()->text() != expected) {
             timer->stop();
             timer->deleteLater();
@@ -697,8 +763,12 @@ void DesktopShortcut::pasteClipboard()
                       &rootX, &rootY, &windowX, &windowY, &modifiers);
         if (focus == target && !(modifiers & (ShiftMask | ControlMask | Mod1Mask | Mod4Mask))) {
             platform_->fakeKeyEvent(display, platform_->controlKey, True, CurrentTime);
+            if (terminalPaste)
+                platform_->fakeKeyEvent(display, platform_->shiftKey, True, CurrentTime);
             platform_->fakeKeyEvent(display, platform_->vKey, True, CurrentTime);
             platform_->fakeKeyEvent(display, platform_->vKey, False, CurrentTime);
+            if (terminalPaste)
+                platform_->fakeKeyEvent(display, platform_->shiftKey, False, CurrentTime);
             platform_->fakeKeyEvent(display, platform_->controlKey, False, CurrentTime);
             XFlush(display);
             timer->stop();

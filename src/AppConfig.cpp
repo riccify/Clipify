@@ -26,6 +26,8 @@ QDir configFolder()
 QVariantMap defaults()
 {
     return {{"clipboard/historyNumber", 20},
+            {"clipboard/historyLimit", 0},
+            {"clipboard/skipSensitive", true},
             {"clipboard/accurateOcr", false},
             {"screen/saveFolder", QDir(QStandardPaths::writableLocation(QStandardPaths::PicturesLocation))
                                       .filePath("Screenshots")},
@@ -33,9 +35,17 @@ QVariantMap defaults()
                                         .filePath("Clipify Notes")},
             {autoStartKey, false},
             {"commands/entries", QVariantList{}},
+            {"converter/targetFormat", QStringLiteral("png")},
+            {"whisper/historyLimit", 0},
             {"whisper/modelPath", QStringLiteral("")},
             {"whisper/language", QStringLiteral("auto")},
-            {"whisper/holdToTalk", false}};
+            {"whisper/holdToTalk", false},
+            {"whisper/polishText", false},
+            {"llm/cloud", false},
+            {"llm/provider", QStringLiteral("openrouter")},
+            {"llm/polishModel/openrouter", QStringLiteral("")},
+            {"llm/polishModel/openai", QStringLiteral("")},
+            {"llm/polishModel/anthropic", QStringLiteral("")}};
 }
 
 QVariantMap factoryDefaults()
@@ -81,7 +91,7 @@ QString readJson(const QString &path, QVariantMap &values)
         const auto entry = object.value(it.key());
         if (it.value().typeId() == QMetaType::Bool && !entry.isBool())
             return invalidSettings;
-        if (it.value().typeId() == QMetaType::Int && entry.toInt() < 1)
+        if (it.value().typeId() == QMetaType::Int && entry.toInt(-1) < (it.value().toInt() == 0 ? 0 : 1))
             return invalidSettings;
         if (it.value().typeId() == QMetaType::QVariantList && !entry.isArray())
             return invalidSettings;
@@ -92,7 +102,15 @@ QString readJson(const QString &path, QVariantMap &values)
             if (it.key() == "whisper/language") {
                 if (value != "auto" && value != "de" && value != "en")
                     return invalidSettings;
-            } else if (!(it.key() == "whisper/modelPath" && value.isEmpty())
+            } else if (it.key() == "converter/targetFormat") {
+                static const QStringList formats{"png", "jpg", "webp", "bmp", "tiff"};
+                if (!formats.contains(value))
+                    return invalidSettings;
+            } else if (it.key() == "llm/provider") {
+                if (value != "openrouter" && value != "openai" && value != "anthropic")
+                    return invalidSettings;
+            } else if (!it.key().startsWith("llm/polishModel/")
+                       && !(it.key() == "whisper/modelPath" && value.isEmpty())
                        && !QDir::isAbsolutePath(value)) {
                 return invalidSettings;
             }
@@ -247,15 +265,18 @@ bool AppConfig::store(const QVariantMap &values, const QString &path)
 
 bool AppConfig::setValue(const QString &key, const QVariant &value)
 {
+    return setValues({{key, value}});
+}
+
+bool AppConfig::setValues(const QVariantMap &values)
+{
     if (unreadable_) {
         setMessage(tr("Load a valid config before changing settings."));
         return false;
     }
-    if (values_.value(key) == value)
-        return true;
     auto updated = values_;
-    updated.insert(key, value);
-    return store(updated, path_);
+    updated.insert(values);
+    return updated == values_ || store(updated, path_);
 }
 
 bool AppConfig::autoStart() const

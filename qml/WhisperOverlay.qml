@@ -12,16 +12,17 @@ Window {
     flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
            | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
     transientParent: null
+    property real revealProgress: 0
 
     function present() {
         if (!visible) {
             whisperModule.placeOverlay(overlay)
             show()
         }
-        if (fade.to !== 1 || panel.opacity === 0) {
-            fade.stop()
-            fade.to = 1
-            fade.start()
+        if (reveal.to !== 1 || revealProgress === 0) {
+            reveal.stop()
+            reveal.to = 1
+            reveal.start()
         }
     }
 
@@ -43,26 +44,28 @@ Window {
         id: dismiss
         interval: 2400
         onTriggered: {
-            fade.stop()
-            fade.to = 0
-            fade.start()
+            reveal.stop()
+            reveal.to = 0
+            reveal.start()
         }
     }
 
     Rectangle {
-        id: panel
         anchors.fill: parent
+        anchors.topMargin: 4
+        anchors.bottomMargin: 4
         radius: 12
         color: "#252525"
         border.color: "#525252"
-        opacity: 0
+        opacity: overlay.revealProgress
+        transform: Translate { y: -overlay.height * (1 - overlay.revealProgress) }
 
         NumberAnimation {
-            id: fade
-            target: panel
-            property: "opacity"
-            duration: to === 1 ? 180 : 250
-            easing.type: Easing.OutCubic
+            id: reveal
+            target: overlay
+            property: "revealProgress"
+            duration: to === 1 ? 310 : 230
+            easing.type: to === 1 ? Easing.OutCubic : Easing.InCubic
             onFinished: {
                 if (to === 0)
                     overlay.hide()
@@ -92,6 +95,38 @@ Window {
                 color: "#f2f2f2"
                 elide: Text.ElideRight
                 font.weight: Font.DemiBold
+            }
+
+            Row {
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredHeight: 28
+                spacing: 3
+                visible: whisperModule.recording
+
+                Repeater {
+                    model: whisperModule.waveform.length
+
+                    Item {
+                        required property int index
+                        readonly property real level: whisperModule.waveform[index] ?? 0
+                        width: 3
+                        height: 28
+
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: parent.width
+                            height: 3 + 25 * parent.level
+                            radius: width / 2
+                            color: "#f2a6a0"
+                            opacity: 0.55 + 0.45 * parent.level
+
+                            Behavior on height {
+                                NumberAnimation { duration: 105; easing.type: Easing.OutCubic }
+                            }
+                            Behavior on opacity { NumberAnimation { duration: 105 } }
+                        }
+                    }
+                }
             }
 
             BusyIndicator {

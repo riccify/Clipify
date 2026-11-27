@@ -2,6 +2,7 @@
 #include "AppConfig.h"
 
 #include <QBuffer>
+#include <QRegularExpression>
 #include <QClipboard>
 #include <QCursor>
 #include <QDialog>
@@ -24,12 +25,66 @@ constexpr auto imageTitleMime = "application/x-clipify-image-title";
 constexpr auto historyNumberKey = "clipboard/historyNumber";
 constexpr int defaultHistoryNumber = 20;
 constexpr int historyPageSize = 50;
+
+bool markedSecret(const QMimeData *mime)
+{
+    return mime && (mime->data("x-kde-passwordManagerHint").trimmed() == "secret"
+                    || mime->hasFormat("ExcludeClipboardContentFromMonitorProcessing")
+                    || mime->hasFormat("application/x-nspasteboard-concealed-type"));
+}
+
+bool looksSensitive(const QString &text)
+{
+    static const QRegularExpression signatures(R"SECRET(
+        -----BEGIN[ ](?:[A-Z0-9]+[ ]+)*PRIVATE[ ]KEY-----
+        | PuTTY-User-Key-File-[23]:
+        | (?<![A-Za-z0-9_])(?:
+            gh[pousr]_[A-Za-z0-9]{30,255}
+            | github_pat_[A-Za-z0-9_]{40,255}
+            | glpat-[A-Za-z0-9_-]{20,255}
+            | (?:glrt|gldt|grptt)-[A-Za-z0-9_-]{20,255}
+            | xox[baprs]-[A-Za-z0-9-]{10,255}
+            | xapp-[A-Za-z0-9-]{20,255}
+            | (?:sk|rk)_(?:live|test)_[A-Za-z0-9]{16,255}
+            | sk-(?:proj-|svcacct-|admin-)[A-Za-z0-9_-]{20,255}
+            | sk-ant-[A-Za-z0-9_-]{25,255}
+            | sk-[A-Za-z0-9]{48}
+            | AIza[A-Za-z0-9_-]{35}
+            | ya29[.][A-Za-z0-9_-]{35,512}
+            | npm_[A-Za-z0-9]{30,100}
+            | pypi-[A-Za-z0-9_-]{30,512}
+            | hf_[A-Za-z0-9]{30,100}
+            | (?:AKIA|ASIA)[A-Z0-9]{16}
+            | SG[.][A-Za-z0-9_-]{22}[.][A-Za-z0-9_-]{43}
+            | sq0atp-[A-Za-z0-9_-]{20,255}
+            | dop_v1_[a-f0-9]{64}
+            | shp(?:at|ca|pa|ss)_[a-f0-9]{32}
+            | hvs[.][A-Za-z0-9_-]{20,255}
+            | AGE-SECRET-KEY-1[0-9A-Z]{58}
+            | [0-9]{8,12}:[A-Za-z0-9_-]{35}
+            | eyJ[A-Za-z0-9_-]{6,1024}[.]eyJ[A-Za-z0-9_-]{6,4096}[.][A-Za-z0-9_-]{12,1024}
+          )(?![A-Za-z0-9_-])
+        | (?i:\b(?:api[_ -]?key|client[_ -]?secret|access[_ -]?token|refresh[_ -]?token|
+                    aws_secret_access_key|password|passwd)\b)["']?\s*[:=]\s*["']?
+          [^\s"'<>;,]{8,}
+        | (?i:\bAuthorization\s*:\s*(?:Bearer|Basic)\s+)[A-Za-z0-9+/_.=-]{16,}
+        | (?i:\b(?:postgres(?:ql)?|mysql|mongodb(?:\+srv)?|redis|amqp|https?)://)
+          [^\s/:@]+:[^\s/@]+@
+    )SECRET", QRegularExpression::ExtendedPatternSyntaxOption);
+    return signatures.match(text).hasMatch();
+}
+
 }
 
 ClipboardModule::ClipboardModule(QObject *parent)
     : QAbstractListModel(parent)
 {
     connect(&AppConfig::instance(), &AppConfig::reloaded, this, &ClipboardModule::historyNumberChanged);
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, [this] {
+        enforceLimit();
+        emit privacySettingsChanged();
+    });
+    connect(&historyPause_, &HistoryPause::changed, this, &ClipboardModule::pausedChanged);
     const QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (dataPath.isEmpty() || !QDir().mkpath(dataPath)) {
         setStorageError(tr("Could not create the local history folder."));
@@ -68,10 +123,10 @@ ClipboardModule::ClipboardModule(QObject *parent)
     }
 
     auto *clipboard = QGuiApplication::clipboard();
-    currentText_ = clipboard->text(QClipboard::Clipboard);
+    QSqlQuery(database_).exec("PRAGMA secure_delete = ON");
+    enforceLimit();
     connect(clipboard, &QClipboard::dataChanged,
             this, &ClipboardModule::recordCopy);
-    loadOlderEntries();
 }
 
 int ClipboardModule::historyNumber() const
@@ -88,6 +143,89 @@ void ClipboardModule::setHistoryNumber(int number)
     if (!AppConfig::instance().setValue(historyNumberKey, number))
         return;
     emit historyNumberChanged();
+}
+
+int ClipboardModule::historyLimit() const
+{
+    return AppConfig::instance().value("clipboard/historyLimit", 0).toInt();
+}
+
+void ClipboardModule::setHistoryLimit(int limit)
+{
+    if (limit < 0 || limit == historyLimit())
+        return;
+    if (!AppConfig::instance().setValue("clipboard/historyLimit", limit))
+        return;
+    enforceLimit();
+    emit privacySettingsChanged();
+}
+
+bool ClipboardModule::skipSensitive() const
+{
+    return AppConfig::instance().value("clipboard/skipSensitive", true).toBool();
+}
+
+void ClipboardModule::setSkipSensitive(bool enabled)
+{
+    if (AppConfig::instance().setValue("clipboard/skipSensitive", enabled))
+        emit privacySettingsChanged();
+}
+
+void ClipboardModule::pauseHistory(int seconds)
+{
+    historyPause_.pause(seconds);
+}
+
+void ClipboardModule::resumeHistory()
+{
+    historyPause_.resume();
+}
+
+bool ClipboardModule::pruneHistory(qint64 &cutoff)
+{
+    const int limit = historyLimit();
+    if (limit == 0)
+        return true;
+
+    QSqlQuery query(database_);
+    if (!query.prepare("SELECT id FROM clipboard_entries ORDER BY id DESC LIMIT 1 OFFSET ?"))
+        return false;
+    query.addBindValue(limit - 1);
+    if (!query.exec())
+        return false;
+    if (!query.next())
+        return true;
+    cutoff = query.value(0).toLongLong();
+    query.finish();
+    if (!query.prepare("DELETE FROM clipboard_entries WHERE id < ?"))
+        return false;
+    query.addBindValue(cutoff);
+    return query.exec();
+}
+
+void ClipboardModule::enforceLimit()
+{
+    qint64 cutoff = 0;
+    if (!database_.isOpen())
+        return;
+    if (!pruneHistory(cutoff)) {
+        setStorageError(tr("Could not apply the clipboard history limit."));
+        return;
+    }
+    reloadHistory();
+}
+
+void ClipboardModule::clearHistory()
+{
+    if (!database_.isOpen())
+        return;
+    QSqlQuery query(database_);
+    if (!query.exec("DELETE FROM clipboard_entries")) {
+        setStorageError(tr("Could not clear the clipboard history."));
+        return;
+    }
+    reloadHistory();
+    emit historyCleared();
 }
 
 QString ClipboardModule::storageError() const
@@ -133,6 +271,11 @@ void ClipboardModule::setHistorySearch(const QString &text)
         return;
 
     historySearch_ = search;
+    reloadHistory();
+}
+
+void ClipboardModule::reloadHistory()
+{
     beginResetModel();
     entries_.clear();
     hasOlderEntries_ = true;
@@ -318,14 +461,20 @@ void ClipboardModule::recordCopy()
 {
     auto *clipboard = QGuiApplication::clipboard();
     const QMimeData *mime = clipboard->mimeData();
-    const QImage image = mime && mime->hasImage() ? qvariant_cast<QImage>(mime->imageData()) : QImage();
-    const bool isImage = !image.isNull();
-    const QString currentText = !isImage && mime && mime->hasText() ? mime->text() : QString();
+    const bool blocked = !mime || (skipSensitive() && markedSecret(mime));
+    const bool hasImage = !paused() && !blocked && mime->hasImage();
+    const QString clipboardText = !paused() && !blocked && !hasImage && mime->hasText() ? mime->text() : QString();
+    const bool sensitive = skipSensitive() && !clipboardText.isEmpty() && looksSensitive(clipboardText);
+    const QString currentText = sensitive ? QString() : clipboardText;
     if (currentText_ != currentText) {
         currentText_ = currentText;
         emit currentTextChanged();
     }
+    if (paused() || blocked || sensitive || !database_.isOpen())
+        return;
 
+    const QImage image = hasImage ? qvariant_cast<QImage>(mime->imageData()) : QImage();
+    const bool isImage = !image.isNull();
     QString text = currentText;
     QByteArray png;
     if (isImage) {
@@ -351,12 +500,35 @@ void ClipboardModule::recordCopy()
         return;
 
     const qint64 copiedAt = QDateTime::currentMSecsSinceEpoch();
+    const bool limited = historyLimit() > 0;
+    if (limited && !database_.transaction()) {
+        setStorageError(tr("Could not save a clipboard entry."));
+        return;
+    }
     QSqlQuery insert(database_);
     if (insert.prepare("INSERT INTO clipboard_entries (text, copied_at_ms, image_png) VALUES (?, ?, ?)")) {
         insert.addBindValue(text);
         insert.addBindValue(copiedAt);
         insert.addBindValue(imageData);
         if (insert.exec()) {
+            const qint64 insertedId = insert.lastInsertId().toLongLong();
+            insert.finish();
+            qint64 cutoff = 0;
+            if (limited && (!pruneHistory(cutoff) || !database_.commit())) {
+                database_.rollback();
+                setStorageError(tr("Could not apply the clipboard history limit."));
+                return;
+            }
+            const auto pruned = std::find_if(entries_.cbegin(), entries_.cend(),
+                                             [cutoff](const Entry &entry) { return entry.id < cutoff; });
+            if (pruned != entries_.cend()) {
+                const int row = pruned - entries_.cbegin();
+                beginRemoveRows({}, row, entries_.size() - 1);
+                entries_.resize(row);
+                endRemoveRows();
+                hasOlderEntries_ = false;
+                emit hasOlderEntriesChanged();
+            }
             if (!historySearch_.isEmpty()) {
                 QSqlQuery match(database_);
                 match.prepare("SELECT instr(lower(?), lower(?)) > 0");
@@ -369,7 +541,7 @@ void ClipboardModule::recordCopy()
             }
             const bool previouslyHadOlderEntries = hasOlderEntries();
             beginInsertRows({}, 0, 0);
-            entries_.prepend({insert.lastInsertId().toLongLong(), text,
+            entries_.prepend({insertedId, text,
                               QDateTime::fromMSecsSinceEpoch(copiedAt), isImage});
             endInsertRows();
             if (previouslyHadOlderEntries != hasOlderEntries())
@@ -379,6 +551,8 @@ void ClipboardModule::recordCopy()
         }
     }
 
+    if (limited)
+        database_.rollback();
     qWarning() << insert.lastError().text();
     setStorageError(tr("Could not save a clipboard entry."));
 }

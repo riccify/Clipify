@@ -1,4 +1,5 @@
 #include "Converter.h"
+#include "AppConfig.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -16,6 +17,7 @@
 #include <algorithm>
 
 namespace {
+constexpr auto targetFormatKey = "converter/targetFormat";
 QString formatLabel(const QByteArray &format)
 {
     return format == "jpg" ? QStringLiteral("JPEG") : QString::fromLatin1(format).toUpper();
@@ -37,10 +39,15 @@ Converter::Converter(QObject *parent) : QObject(parent)
             formats_.append(QVariantMap{{"label", formatLabel(format)}, {"value", QString::fromLatin1(format)}});
     }
 
+    reloadTargetFormat();
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, &Converter::reloadTargetFormat);
+
     connect(&worker_, &QFutureWatcher<Result>::finished, this, [this] {
         entries_[next_].result = worker_.result();
         ++next_;
         busy_ = false;
+        if (next_ == entries_.size())
+            reloadTargetFormat();
         startNext();
     });
 }
@@ -162,13 +169,29 @@ void Converter::setTargetFormat(const QString &format)
         if (option.toMap().value("value").toString() != format)
             continue;
 
-        target_ = format.toLatin1();
-        for (auto &entry : entries_)
-            entry.result = {};
-        next_ = 0;
-        startNext();
+        if (AppConfig::instance().setValue(targetFormatKey, format))
+            reloadTargetFormat();
         return;
     }
+}
+
+void Converter::reloadTargetFormat()
+{
+    if (busy_ || batchSaved_)
+        return;
+    const auto format = AppConfig::instance().value(targetFormatKey, "png").toString();
+    const auto found = std::any_of(formats_.cbegin(), formats_.cend(), [&format](const QVariant &option) {
+        return option.toMap().value("value").toString() == format;
+    });
+    const QByteArray target = found ? format.toLatin1() : QByteArray("png");
+    if (target_ == target)
+        return;
+
+    target_ = target;
+    for (auto &entry : entries_)
+        entry.result = {};
+    next_ = 0;
+    startNext();
 }
 
 void Converter::startNext()
@@ -310,6 +333,7 @@ void Converter::finishBatchSave()
     batchSaved_ = false;
     entries_.clear();
     next_ = 0;
+    reloadTargetFormat();
     emit changed();
     notify(single ? tr("Image saved.") : tr("Images saved."), false, true);
 }

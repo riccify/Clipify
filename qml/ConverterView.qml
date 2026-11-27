@@ -82,6 +82,7 @@ ColumnLayout {
             id: formatButton
             Accessible.name: qsTr("Target format: %1").arg(text)
             Layout.preferredWidth: 148
+            CursorTooltip { text: qsTr("Choose the output format for all images in the list.") }
             options: converter.formats
             selectedValue: converter.targetFormat
             searchable: true
@@ -148,6 +149,7 @@ ColumnLayout {
             ActionButton {
                 Layout.alignment: Qt.AlignHCenter
                 text: qsTr("Choose images…")
+                CursorTooltip { text: qsTr("Select one or more image files to convert.") }
                 enabled: !view.transitioning
                 onClicked: converter.chooseFile()
             }
@@ -169,6 +171,7 @@ ColumnLayout {
 
         ActionButton {
             text: qsTr("Clear")
+            CursorTooltip { text: qsTr("Remove all images from the conversion list.") }
             enabled: !converter.busy
             onClicked: {
                 view.clearingBatch = true
@@ -178,6 +181,7 @@ ColumnLayout {
 
         ActionButton {
             text: qsTr("Save all…")
+            CursorTooltip { text: qsTr("Export the converted images to a folder.") }
             enabled: !converter.busy && converter.readyCount > 0
             onClicked: converter.saveAll()
         }
@@ -222,9 +226,10 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     elide: Text.ElideMiddle
                     font.weight: Font.DemiBold
-                    HoverHandler { id: nameHover }
-                    ToolTip.visible: nameHover.hovered && truncated
-                    ToolTip.text: text
+                    CursorTooltip {
+                        text: parent.text
+                        available: parent.truncated
+                    }
                 }
 
                 Label {
@@ -236,19 +241,22 @@ ColumnLayout {
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     color: result.modelData.error ? "#ffb4ab" : "#b5b5b5"
-                    ToolTip.visible: resultHover.hovered && truncated
-                    ToolTip.text: text
-                    HoverHandler { id: resultHover }
+                    CursorTooltip {
+                        text: parent.text
+                        available: parent.truncated
+                    }
                 }
 
                 ActionButton {
                     text: qsTr("Copy")
+                    CursorTooltip { text: qsTr("Copy the converted image to the clipboard.") }
                     enabled: result.modelData.ready && !view.transitioning
                     onClicked: converter.copy(result.index)
                 }
 
                 ActionButton {
                     text: qsTr("Save…")
+                    CursorTooltip { text: qsTr("Save this converted image to a file.") }
                     enabled: result.modelData.ready && !converter.busy && !view.transitioning
                     onClicked: converter.save(result.index)
                 }

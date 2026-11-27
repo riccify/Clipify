@@ -180,6 +180,7 @@ Window {
                         selectByMouse: true
                         readOnly: popup.saved
                         placeholderText: qsTr("Write a note in Markdown…")
+                        CursorTooltip { text: qsTr("Use Markdown for formatting. Save with Ctrl+S.") }
                         placeholderTextColor: "#dedede"
                         Accessible.name: qsTr("Note")
                         padding: 12

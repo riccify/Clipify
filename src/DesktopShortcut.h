@@ -16,7 +16,7 @@ class DesktopShortcut : public QObject
     Q_PROPERTY(bool canChangeShortcut READ canChangeShortcut CONSTANT)
 
 public:
-    enum class Action { History, Screenshot, FullScreen, FocusedWindow, Ocr, Notes, Whisper, Command };
+    enum class Action { History, PauseHistory, PauseDictation, Screenshot, FullScreen, FocusedWindow, Ocr, Notes, Whisper, Command };
     explicit DesktopShortcut(Action action = Action::History, QObject *parent = nullptr);
     ~DesktopShortcut() override;
     static QVariantMap defaultAccelerators();
@@ -32,6 +32,8 @@ public:
     Q_INVOKABLE void showAtPointer(QQuickWindow *window);
     Q_INVOKABLE void pasteClipboard();
     Q_SCRIPTABLE Q_INVOKABLE void ShowHistory();
+    Q_SCRIPTABLE Q_INVOKABLE void ToggleHistoryPause();
+    Q_SCRIPTABLE Q_INVOKABLE void ToggleDictationHistoryPause();
     Q_SCRIPTABLE Q_INVOKABLE void CaptureScreen();
     Q_SCRIPTABLE Q_INVOKABLE void OpenNotes();
     Q_SCRIPTABLE Q_INVOKABLE void ToggleDictation();

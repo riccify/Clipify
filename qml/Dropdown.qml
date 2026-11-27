@@ -8,6 +8,10 @@ Button {
     required property string selectedValue
     property bool searchable: false
     property string searchPlaceholder: qsTr("Search…")
+    property string emptyText: qsTr("No matching formats.")
+    property string statusText
+    property int menuWidth: 228
+    signal opening()
     readonly property bool popupVisible: formatMenu.visible
     signal valueSelected(string value)
 
@@ -37,6 +41,8 @@ Button {
         Label {
             Layout.fillWidth: true
             text: formatButton.text
+            textFormat: Text.PlainText
+            elide: Text.ElideRight
             color: "#f2f2f2"
             font.weight: Font.DemiBold
         }
@@ -52,7 +58,7 @@ Button {
     Popup {
         id: formatMenu
         y: formatButton.height + 6
-        width: 228
+        width: formatButton.menuWidth
         padding: 8
         margins: 6
         focus: true
@@ -61,7 +67,7 @@ Button {
         readonly property var matches: {
             const query = formatButton.searchable ? formatSearch.text.trim().toLowerCase() : ""
             return formatButton.options.filter(format => format.label.toLowerCase().includes(query)
-                                                      || format.value.includes(query))
+                                                      || format.value.toLowerCase().includes(query))
         }
 
         function selectFormat(index) {
@@ -81,6 +87,7 @@ Button {
         }
 
         onAboutToShow: {
+            formatButton.opening()
             formatList.currentIndex = Math.max(0, matches.findIndex(format => format.value === formatButton.selectedValue))
             focusInput()
         }
@@ -105,15 +112,11 @@ Button {
         contentItem: ColumnLayout {
             spacing: 6
 
-            TextField {
+            AppTextField {
                 id: formatSearch
                 Layout.fillWidth: true
                 visible: formatButton.searchable
                 placeholderText: formatButton.searchPlaceholder
-                Accessible.name: placeholderText
-                placeholderTextColor: "#b5b5b5"
-                color: "#f2f2f2"
-                selectByMouse: true
                 leftPadding: 31
                 onTextChanged: formatList.currentIndex = formatMenu.matches.length > 0 ? 0 : -1
                 onAccepted: formatMenu.selectFormat(formatList.currentIndex)
@@ -142,6 +145,9 @@ Button {
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
                 model: formatMenu.matches
+                ScrollBar.vertical: ScrollBar {
+                    policy: formatList.count > 5 ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+                }
                 keyNavigationEnabled: !formatButton.searchable
                 Keys.onReturnPressed: formatMenu.selectFormat(currentIndex)
                 Keys.onEnterPressed: formatMenu.selectFormat(currentIndex)
@@ -162,6 +168,8 @@ Button {
                         Label {
                             Layout.fillWidth: true
                             text: option.text
+                            textFormat: Text.PlainText
+                            elide: Text.ElideRight
                             color: "#f2f2f2"
                         }
 
@@ -182,10 +190,11 @@ Button {
 
             Label {
                 Layout.fillWidth: true
-                visible: formatList.count === 0
+                visible: formatButton.statusText.length > 0 || formatList.count === 0
                 color: "#b5b5b5"
                 padding: 6
-                text: qsTr("No matching formats.")
+                text: formatButton.statusText || formatButton.emptyText
+                wrapMode: Text.WordWrap
             }
         }
     }

@@ -32,6 +32,7 @@ ColumnLayout {
 
         CommandButton {
             text: qsTr("Add command")
+            CursorTooltip { text: qsTr("Create a command with an optional global hotkey.") }
             onClicked: editor.edit(null)
         }
     }
@@ -101,9 +102,10 @@ ColumnLayout {
                             elide: Text.ElideRight
                             color: "#b5b5b5"
                             font.family: "monospace"
-                            HoverHandler { id: commandHover }
-                            ToolTip.visible: commandHover.hovered && truncated
-                            ToolTip.text: text
+                            CursorTooltip {
+                                text: parent.text
+                                available: parent.truncated
+                            }
                         }
 
                         Label {
@@ -113,9 +115,10 @@ ColumnLayout {
                             textFormat: Text.PlainText
                             color: card.modelData.error ? "#ffb4ab" : "#b5b5b5"
                             elide: Text.ElideRight
-                            HoverHandler { id: resultHover }
-                            ToolTip.visible: resultHover.hovered && truncated
-                            ToolTip.text: text
+                            CursorTooltip {
+                                text: parent.text
+                                available: parent.truncated
+                            }
                         }
                     }
 
@@ -128,20 +131,23 @@ ColumnLayout {
                         Accessible.name: qsTr("Enable %1").arg(card.modelData.name)
                         checked: card.modelData.enabled
                         hoverEnabled: true
-                        ToolTip.visible: hovered
-                        ToolTip.delay: 500
-                        ToolTip.text: checked ? qsTr("Disable command") : qsTr("Enable command")
+                        CursorTooltip {
+                            text: parent.checked ? qsTr("Disable command") : qsTr("Enable command")
+                            delay: 500
+                        }
                         onClicked: commandShortcuts.setEnabled(card.modelData.id, checked)
                     }
 
                     CommandButton {
                         text: card.modelData.running ? qsTr("Running…") : qsTr("Run")
+                        CursorTooltip { text: qsTr("Run this shell command in the background.") }
                         enabled: card.modelData.enabled && !card.modelData.running
                         onClicked: commandShortcuts.run(card.modelData.id)
                     }
 
                     CommandButton {
                         text: qsTr("Edit")
+                        CursorTooltip { text: qsTr("Change the command, name, or hotkey.") }
                         onClicked: editor.edit(card.modelData)
                     }
 
@@ -221,12 +227,11 @@ ColumnLayout {
                 font.weight: Font.DemiBold
             }
 
-            TextField {
+            AppTextField {
                 id: nameField
                 Layout.fillWidth: true
                 placeholderText: qsTr("Name")
-                placeholderTextColor: "#b5b5b5"
-                Accessible.name: placeholderText
+                CursorTooltip { text: qsTr("Name shown in the command list.") }
             }
 
             ScrollView {
@@ -237,6 +242,7 @@ ColumnLayout {
                 TextArea {
                     id: commandField
                     placeholderText: qsTr("Shell command")
+                    CursorTooltip { text: qsTr("Command Clipify runs when you use the hotkey.") }
                     placeholderTextColor: "#b5b5b5"
                     Accessible.name: placeholderText
                     textFormat: TextEdit.PlainText
@@ -265,6 +271,7 @@ ColumnLayout {
                          : editor.accelerator ? commandShortcuts.shortcutLabel(editor.accelerator)
                                               : qsTr("Record shortcut")
                     enabled: commandShortcuts.hotkeysAvailable
+                    CursorTooltip { text: qsTr("Click, then press the key combination to record.") }
 
                     contentItem: ShortcutKeys {
                         keys: editor.recording || !editor.accelerator ? [recorder.text] : recorder.text.split("+")
@@ -306,6 +313,7 @@ ColumnLayout {
                 CommandButton {
                     visible: editor.accelerator.length > 0
                     text: qsTr("Clear")
+                    CursorTooltip { text: qsTr("Remove the recorded hotkey from this command.") }
                     onClicked: editor.accelerator = ""
                 }
             }
@@ -324,11 +332,13 @@ ColumnLayout {
 
                 CommandButton {
                     text: qsTr("Cancel")
+                    CursorTooltip { text: qsTr("Discard changes and close the editor.") }
                     onClicked: editor.close()
                 }
 
                 CommandButton {
                     text: qsTr("Save")
+                    CursorTooltip { text: qsTr("Save the command and its hotkey.") }
                     onClicked: {
                         editor.error = commandShortcuts.save(editor.commandId, nameField.text,
                                                               commandField.text, editor.accelerator)

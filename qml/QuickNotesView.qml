@@ -97,6 +97,10 @@ Item {
                                 Accessible.checkable: true
                                 Accessible.checked: dateGroup.expanded
                                 onClicked: notesView.toggleDate(dateGroup.modelData.date)
+                                CursorTooltip {
+                                    text: dateGroup.expanded ? qsTr("Collapse notes for this date")
+                                                             : qsTr("Expand notes for this date")
+                                }
 
                                 contentItem: RowLayout {
                                     spacing: 6
@@ -147,6 +151,7 @@ Item {
                                             text: Qt.formatTime(modelData.savedAt, "HH:mm:ss")
                                             hoverEnabled: true
                                             onClicked: notesView.selectNote(modelData.path)
+                                            CursorTooltip { text: qsTr("Read this saved note") }
 
                                             contentItem: Label {
                                                 text: noteButton.text

@@ -62,6 +62,10 @@ Item {
                 hoverEnabled: true
                 Accessible.name: card.imageName
                 onClicked: Qt.openUrlExternally(card.imageUrl)
+                CursorTooltip {
+                    available: !trashAction.hovered
+                    text: qsTr("Open in the system image viewer")
+                }
 
                 background: Rectangle {
                     radius: 9

@@ -14,6 +14,7 @@ class AppConfig : public QObject
 public:
     static AppConfig &instance();
     QVariant value(const QString &key, const QVariant &fallback = {}) const;
+    bool setValues(const QVariantMap &values);
     bool setValue(const QString &key, const QVariant &value);
     bool autoStart() const;
     QString message() const { return message_; }
