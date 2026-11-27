@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(Clipify VERSION 0.1.5 LANGUAGES CXX)
+project(Clipify VERSION 0.1.6 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Sql Widgets Network)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Quick QuickControls2 Sql Widgets Network Concurrent)
 qt_standard_project_setup()
 
 qt_add_executable(clipify WIN32
@@ -15,6 +15,16 @@ qt_add_executable(clipify WIN32
     src/TextRecognition.h
     src/ReleaseCheck.cpp
     src/ReleaseCheck.h
+    src/WhisperModule.cpp
+    src/WhisperModule.h
+    src/CommandShortcuts.cpp
+    src/CommandShortcuts.h
+    src/Converter.cpp
+    src/Converter.h
+    src/AppConfig.cpp
+    src/AppConfig.h
+    src/QuickNotes.cpp
+    src/QuickNotes.h
     src/main.cpp
     src/ClipboardModule.cpp
     src/ClipboardModule.h
@@ -25,13 +35,13 @@ qt_add_qml_module(clipify
     URI Clipify
     VERSION 1.0
     RESOURCE_PREFIX /qt/qml
-    QML_FILES qml/Main.qml qml/HistoryPopup.qml qml/HistoryAction.qml qml/ScreenshotGallery.qml qml/ClipboardTypeIcon.qml
+    QML_FILES qml/Main.qml qml/HistoryPopup.qml qml/HistoryAction.qml qml/ScreenshotGallery.qml qml/ClipboardTypeIcon.qml qml/QuickNotePopup.qml qml/QuickNotesView.qml qml/ShortcutKeys.qml qml/LineIcon.qml qml/MessageBox.qml qml/ConverterView.qml qml/CommandShortcutsView.qml qml/WhisperView.qml qml/WhisperOverlay.qml qml/Dropdown.qml qml/RecordingIcon.qml qml/RowRemoval.qml
 )
 qt_add_resources(clipify "clipify_branding"
     PREFIX "/clipify"
     FILES assets/clipify-app-icon.png
 )
-target_link_libraries(clipify PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Widgets Qt6::Network)
+target_link_libraries(clipify PRIVATE Qt6::Quick Qt6::QuickControls2 Qt6::Sql Qt6::Widgets Qt6::Network Qt6::Concurrent)
 target_compile_definitions(clipify PRIVATE CLIPIFY_VERSION="${PROJECT_VERSION}")
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -78,6 +88,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Qt loads QML imports and plugins at runtime, so shlibdeps cannot discover them.
     string(JOIN ", " CPACK_DEBIAN_PACKAGE_DEPENDS
         qt6-qpa-plugins
+        qt6-image-formats-plugins
         qml6-module-qtqml
         qml6-module-qtqml-workerscript
         qml6-module-qtquick

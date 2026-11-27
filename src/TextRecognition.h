@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QProcess>
-#include <QSettings>
 
 class QImage;
 
@@ -26,6 +25,5 @@ signals:
 private:
     void setStatus(const QString &status);
     QProcess process_;
-    QSettings settings_;
     QString status_;
 };

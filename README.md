@@ -1,22 +1,34 @@
 # Clipify
 
-**Your clipboard history, one shortcut away.**
+Clipify is a modular desktop toolbox for everyday shortcuts. It runs in the system tray and keeps clipboard history, OCR, screenshots, Markdown notes, image conversion, command shortcuts, and dictation in one app.
 
-Clipify is a modular desktop toolbox for everyday shortcuts. It remembers copied text and images, captures screenshots, and copies text from a screen selection using local OCR.
+## Features
+
+| Module | What it does |
+| --- | --- |
+| Clipboard | Local text and image history, live search, a keyboard-driven popup at the pointer, and offline OCR for screen selections |
+| Screen | Region, monitor, and focused-window captures, a screenshot gallery, and a configurable save folder |
+| Quick Notes | A Markdown editor at the pointer, inline formatting, quick saving, and notes grouped by date |
+| Converter | Batch image conversion by drag-and-drop or paste, with single-image copy and a combined export |
+| Commands | Custom global shortcuts for shell commands and a Run button for testing them |
+| Whisper | Offline dictation with toggle and hold-to-talk modes, a transcript history, and paste into the focused app on X11 |
+| Settings | Tray autostart, JSON configuration import and export, and factory reset |
 
 ## Quick Install
 
-For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.5_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.5/clipify_0.1.5_amd64.deb), then open a terminal in the download folder and run:
+For **Zorin OS 18.1 or Ubuntu 24.04 on X11** with a 64-bit Intel or AMD PC, download [clipify_0.1.6_amd64.deb](https://github.com/riccify/Clipify/releases/download/v0.1.6/clipify_0.1.6_amd64.deb), then open a terminal in the download folder and run:
 
 ```bash
-sudo apt install ./clipify_0.1.5_amd64.deb
+sudo apt install ./clipify_0.1.6_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the **Fast** OCR models for German and English, then adds **Clipify** to your app menu. **You can launch Clipify right away without compiling anything.**
 
+**Whisper** requires a separate local runtime and model setup in this release. See the [Whisper installation instructions](Installer.md#local-whisper-dictation).
+
 **Zorin and GNOME:** Open Clipify from the app menu. Clipify sets up available global shortcuts in your account on first launch. If GNOME already uses `Super+V`, Clipify tries `Super+Shift+V`. You can change any binding in the app.
 
-[Build from source](#build-from-source) · [Detailed installation guide](Installer.md)
+[Build from source](#build-from-source) · [Installation guide](Installer.md) · [Changelog](CHANGELOG.md)
 
 ## Clipboard history
 
@@ -36,6 +48,28 @@ Press <kbd>Alt</kbd> + <kbd>Print</kbd> to select an area and copy its text. Cli
 
 Clipify saves a numbered PNG in `Pictures/Screenshots` and copies the image to the clipboard. Use the eye icon on an image entry to open a preview. Open **Screen** to browse the screenshot gallery and change the shortcuts.
 
+## Quick Notes
+
+Press <kbd>Super</kbd> + <kbd>N</kbd> to write a note at your mouse pointer. If GNOME already uses that shortcut, Clipify tries <kbd>Super</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd>. Press <kbd>Space</kbd> or <kbd>Enter</kbd> after inline Markdown such as `**bold**` to format it. Press <kbd>Backspace</kbd> immediately afterward to restore the markup. Press <kbd>Ctrl</kbd> + <kbd>S</kbd> to save under `Documents/Clipify Notes/YYYY-MM-DD/HH-mm-ss.md`, <kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd> to choose a file location, or <kbd>Esc</kbd> to close without saving.
+
+Open **Quick Notes** in the sidebar to browse notes by date, change the global shortcut, or choose the default save folder.
+
+## Converter
+
+Open **Converter**, select a target format, then drop in one or more image files or add files and images with **Ctrl+V**. Clipify detects each source format and converts the list locally. Use **Copy** or **Save** for a single result, or **Save all** to export the list into a folder.
+
+## Command Shortcuts
+
+Open **Commands** to add a shell command, optionally record a global shortcut, and test it with **Run**. Commands run in the background from your home folder. Global command shortcuts are available on X11. Commands imported through **Load Config** stay disabled until you enable them.
+
+## Whisper
+
+Press **Super+Shift+D** to start or stop local dictation on X11, or choose **Hold to talk** in Whisper. Clipify copies the transcript, saves it in **Dictation history**, and pastes into the previously focused application if it still has focus. See the [Whisper installation instructions](Installer.md#local-whisper-dictation) for the microphone tools, executable, and model.
+
+## Settings
+
+Use **Auto Start** to launch Clipify in the tray at login. **Save Config** exports a JSON copy. **Load Config** makes the selected file active and saves later changes there automatically. **Restore factory settings** switches back to the local config and restores its defaults.
+
 ## Build from source
 
 Install the build tools, Qt modules, and OCR dependencies:
@@ -43,7 +77,7 @@ Install the build tools, Qt modules, and OCR dependencies:
 ```bash
 sudo apt update
 sudo apt install git build-essential cmake ninja-build qt6-base-dev qt6-declarative-dev \
-  qt6-qpa-plugins libx11-dev libxtst6 libqt6sql6-sqlite \
+  qt6-qpa-plugins qt6-image-formats-plugins libx11-dev libxtst6 libqt6sql6-sqlite \
   qml6-module-qtqml qml6-module-qtqml-workerscript qml6-module-qtquick \
   qml6-module-qtquick-controls qml6-module-qtquick-layouts \
   qml6-module-qtquick-templates qml6-module-qtquick-window \
@@ -68,7 +102,6 @@ The desktop client uses **C++20, Qt 6 Quick/QML, CMake, and SQLite**.
 ## What's next
 
 - Share screenshots with expiring links through the separate Clipify backend.
-- Dictate text with local transcription.
 - Add and test desktop integration on Windows and Wayland.
 
 [Clipify backend](https://github.com/riccify/ClipifyBackend)

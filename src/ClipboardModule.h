@@ -3,7 +3,6 @@
 #include <QAbstractListModel>
 #include <QDateTime>
 #include <QImage>
-#include <QSettings>
 #include <QSqlDatabase>
 #include <QVector>
 
@@ -55,7 +54,6 @@ private:
 
     enum Role { ClipboardText = Qt::UserRole + 1, CopiedAt, IsImage, EntryId };
 
-    QSettings settings_;
     QSqlDatabase database_;
     QString storageError_;
     QString currentText_;

@@ -1,4 +1,5 @@
 #include "ClipboardModule.h"
+#include "AppConfig.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -28,6 +29,7 @@ constexpr int historyPageSize = 50;
 ClipboardModule::ClipboardModule(QObject *parent)
     : QAbstractListModel(parent)
 {
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, &ClipboardModule::historyNumberChanged);
     const QString dataPath = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
     if (dataPath.isEmpty() || !QDir().mkpath(dataPath)) {
         setStorageError(tr("Could not create the local history folder."));
@@ -74,7 +76,7 @@ ClipboardModule::ClipboardModule(QObject *parent)
 
 int ClipboardModule::historyNumber() const
 {
-    const int number = settings_.value(historyNumberKey, defaultHistoryNumber).toInt();
+    const int number = AppConfig::instance().value(historyNumberKey, defaultHistoryNumber).toInt();
     return number > 0 ? number : defaultHistoryNumber;
 }
 
@@ -83,7 +85,8 @@ void ClipboardModule::setHistoryNumber(int number)
     if (number < 1 || number == historyNumber())
         return;
 
-    settings_.setValue(historyNumberKey, number);
+    if (!AppConfig::instance().setValue(historyNumberKey, number))
+        return;
     emit historyNumberChanged();
 }
 

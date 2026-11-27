@@ -1,8 +1,8 @@
 #pragma once
 
 #include <QObject>
-#include <QSettings>
 #include <QString>
+#include <QVariantMap>
 #include <memory>
 
 class QQuickWindow;
@@ -16,9 +16,14 @@ class DesktopShortcut : public QObject
     Q_PROPERTY(bool canChangeShortcut READ canChangeShortcut CONSTANT)
 
 public:
-    enum class Action { History, Screenshot, FullScreen, FocusedWindow, Ocr };
+    enum class Action { History, Screenshot, FullScreen, FocusedWindow, Ocr, Notes, Whisper, Command };
     explicit DesktopShortcut(Action action = Action::History, QObject *parent = nullptr);
     ~DesktopShortcut() override;
+    static QVariantMap defaultAccelerators();
+    static QString acceleratorForKey(int key, int modifiers);
+    static QString displayAccelerator(const QString &accelerator);
+    bool bindCommand(const QString &accelerator);
+    bool rememberExternalFocus();
 
     QString error() const { return error_; }
     QString shortcut() const { return shortcut_; }
@@ -28,19 +33,26 @@ public:
     Q_INVOKABLE void pasteClipboard();
     Q_SCRIPTABLE Q_INVOKABLE void ShowHistory();
     Q_SCRIPTABLE Q_INVOKABLE void CaptureScreen();
+    Q_SCRIPTABLE Q_INVOKABLE void OpenNotes();
+    Q_SCRIPTABLE Q_INVOKABLE void ToggleDictation();
 
 signals:
     void activated();
+    void pressed();
+    void released();
     void errorChanged();
     void shortcutChanged();
 
 private:
+    void releaseForReset();
+    void reloadShortcut(bool factoryReset = false);
+    void activateFromDesktop();
     void setError(const QString &error);
     bool applyShortcut(const QString &accelerator);
     struct Platform;
     std::unique_ptr<Platform> platform_;
     QString error_;
     QString shortcut_;
+    QString activeAccelerator_;
     Action action_;
-    QSettings settings_;
 };

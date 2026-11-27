@@ -31,6 +31,28 @@ ApplicationWindow {
             screenCapture.refreshGallery()
     }
 
+    MessageBox {
+        id: factoryResetMessage
+        parent: Overlay.overlay
+
+        function showConfirmation() {
+            showMessage(qsTr("Restore factory settings"), MessageBox.Warning, [
+                { buttonLabel: qsTr("Cancel"), buttonIcon: "cancel" },
+                { buttonLabel: qsTr("Restore settings"), buttonIcon: "reset" }
+            ], qsTr("Reset all Clipify settings and switch to the local config? Your notes, screenshots, clipboard history, and external config files will be kept."))
+        }
+
+        onButtonChosen: index => {
+            if (index === 1)
+                appConfig.resetToDefaults()
+        }
+    }
+
+    Connections {
+        target: appConfig
+        function onResetConfirmationRequested() { factoryResetMessage.showConfirmation() }
+    }
+
     onClosing: event => {
         if (windowControls.trayAvailable()) {
             event.accepted = false
@@ -61,114 +83,6 @@ ApplicationWindow {
         antialiasing: true
         color: window.panelColor
         border.color: window.borderColor
-    }
-
-    component LineIcon: Canvas {
-        required property string symbol
-        property color ink: window.mutedColor
-        implicitWidth: 18
-        implicitHeight: 18
-        Layout.alignment: Qt.AlignVCenter
-
-        onInkChanged: requestPaint()
-        onSymbolChanged: requestPaint()
-        onPaint: {
-            const ctx = getContext("2d")
-            ctx.clearRect(0, 0, width, height)
-            ctx.strokeStyle = ink
-            ctx.lineWidth = 1.35
-            ctx.lineCap = "round"
-            ctx.lineJoin = "round"
-            ctx.beginPath()
-
-            switch (symbol) {
-            case "clipboard":
-                ctx.moveTo(6, 4)
-                ctx.lineTo(3.5, 4)
-                ctx.lineTo(3.5, 16)
-                ctx.lineTo(14.5, 16)
-                ctx.lineTo(14.5, 4)
-                ctx.lineTo(12, 4)
-                ctx.rect(6, 2, 6, 4)
-                ctx.moveTo(6.5, 9)
-                ctx.lineTo(11.5, 9)
-                ctx.moveTo(6.5, 12)
-                ctx.lineTo(11.5, 12)
-                break
-            case "screen":
-                ctx.rect(2, 3, 14, 10)
-                ctx.moveTo(9, 13)
-                ctx.lineTo(9, 16)
-                ctx.moveTo(6, 16)
-                ctx.lineTo(12, 16)
-                break
-            case "history":
-                ctx.arc(9, 9, 6.5, Math.PI, Math.PI * 2.85)
-                ctx.moveTo(2.5, 6)
-                ctx.lineTo(2.5, 9)
-                ctx.lineTo(5.5, 9)
-                ctx.moveTo(9, 5.5)
-                ctx.lineTo(9, 9)
-                ctx.lineTo(11.5, 10.5)
-                break
-            case "keys":
-                ctx.rect(2, 4.5, 14, 9)
-                for (let x = 5; x <= 13; x += 4) {
-                    ctx.moveTo(x, 7.5)
-                    ctx.lineTo(x + 0.5, 7.5)
-                }
-                ctx.moveTo(6, 10.5)
-                ctx.lineTo(12, 10.5)
-                break
-            case "folder":
-                ctx.moveTo(2, 5)
-                ctx.lineTo(7, 5)
-                ctx.lineTo(8.5, 7)
-                ctx.lineTo(16, 7)
-                ctx.lineTo(16, 15)
-                ctx.lineTo(2, 15)
-                ctx.closePath()
-                break
-            case "search":
-                ctx.arc(7.5, 7.5, 4.5, 0, Math.PI * 2)
-                ctx.moveTo(11, 11)
-                ctx.lineTo(15, 15)
-                break
-            case "about":
-                ctx.arc(9, 9, 6.5, 0, Math.PI * 2)
-                ctx.moveTo(9, 7.7)
-                ctx.lineTo(9, 12)
-                ctx.moveTo(9, 5.4)
-                ctx.lineTo(9, 5.6)
-                break
-            case "exit":
-                ctx.moveTo(9, 3)
-                ctx.lineTo(3, 3)
-                ctx.lineTo(3, 15)
-                ctx.lineTo(9, 15)
-                ctx.moveTo(7, 9)
-                ctx.lineTo(15, 9)
-                ctx.moveTo(12, 6)
-                ctx.lineTo(15, 9)
-                ctx.lineTo(12, 12)
-                break
-            case "fast":
-                ctx.moveTo(10, 1.5)
-                ctx.lineTo(3.5, 10)
-                ctx.lineTo(8, 10)
-                ctx.lineTo(7.5, 16.5)
-                ctx.lineTo(14.5, 7.5)
-                ctx.lineTo(10, 7.5)
-                ctx.closePath()
-                break
-            case "accurate":
-                ctx.arc(9, 9, 6, 0, Math.PI * 2)
-                ctx.moveTo(12, 9)
-                ctx.arc(9, 9, 3, 0, Math.PI * 2)
-                break
-            }
-            ctx.stroke()
-        }
     }
 
     component ModuleButton: Button {
@@ -241,6 +155,67 @@ ApplicationWindow {
         }
     }
 
+    component FolderSetting: Panel {
+        id: folderSetting
+        required property string folder
+        signal chooseRequested()
+        Layout.fillWidth: true
+        implicitHeight: folderRow.implicitHeight + 20
+
+        RowLayout {
+            id: folderRow
+            anchors.fill: parent
+            anchors.margins: 10
+            anchors.leftMargin: 14
+            anchors.rightMargin: 20
+            spacing: 12
+
+            LineIcon { symbol: "folder" }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 4
+
+                Label {
+                    text: qsTr("Save folder")
+                    color: window.textColor
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+
+                Label {
+                    Layout.fillWidth: true
+                    text: folderSetting.folder
+                    textFormat: Text.PlainText
+                    color: window.mutedColor
+                    elide: Text.ElideMiddle
+                    HoverHandler { id: folderHover }
+                    ToolTip.visible: folderHover.hovered && truncated
+                    ToolTip.text: text
+                }
+            }
+
+            Button {
+                id: chooseFolderButton
+                text: qsTr("Choose folder…")
+                hoverEnabled: true
+                onClicked: folderSetting.chooseRequested()
+
+                background: Rectangle {
+                    implicitWidth: 100
+                    implicitHeight: 36
+                    radius: 6
+                    color: chooseFolderButton.down ? "#505050"
+                         : chooseFolderButton.hovered ? "#454545" : "#353535"
+                    border.color: chooseFolderButton.visualFocus ? window.accentColor
+                                : chooseFolderButton.hovered ? "#707070" : "#515151"
+                    Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                    Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                }
+            }
+        }
+    }
+
     component ShortcutSetting: Panel {
         required property var shortcutController
         required property string heading
@@ -303,44 +278,9 @@ ApplicationWindow {
                     Behavior on color { ColorAnimation { duration: 140 } }
                 }
 
-                contentItem: Row {
-                    spacing: 6
-
-                    Repeater {
-                        model: shortcutButton.recording ? [shortcutButton.text]
-                                                       : shortcutButton.text.split("+")
-
-                        Row {
-                            required property int index
-                            required property string modelData
-                            spacing: 6
-
-                            Label {
-                                visible: index > 0
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "+"
-                                color: window.mutedColor
-                                font.pixelSize: 12
-                            }
-
-                            Rectangle {
-                                width: Math.max(28, keyLabel.implicitWidth + 16)
-                                height: 28
-                                radius: 5
-                                color: shortcutButton.down ? "#444444" : "#303030"
-                                border.color: "#5d5d5d"
-
-                                Label {
-                                    id: keyLabel
-                                    anchors.centerIn: parent
-                                    text: modelData
-                                    color: window.textColor
-                                    font.pixelSize: 12
-                                    font.weight: Font.DemiBold
-                                }
-                            }
-                        }
-                    }
+                contentItem: ShortcutKeys {
+                    keys: shortcutButton.recording ? [shortcutButton.text] : shortcutButton.text.split("+")
+                    pressed: shortcutButton.down
                 }
 
                 onClicked: {
@@ -531,6 +471,7 @@ ApplicationWindow {
             }
 
             ModuleButton {
+                id: screenNavButton
                 anchors.top: clipboardNavButton.bottom
                 anchors.topMargin: 6
                 module: "screen"
@@ -538,6 +479,45 @@ ApplicationWindow {
             }
 
             ModuleButton {
+                id: notesNavButton
+                anchors.top: screenNavButton.bottom
+                anchors.topMargin: 6
+                module: "notes"
+                text: qsTr("Quick Notes")
+            }
+
+            ModuleButton {
+                id: converterNavButton
+                anchors.top: notesNavButton.bottom
+                anchors.topMargin: 6
+                module: "converter"
+                text: qsTr("Converter")
+            }
+
+            ModuleButton {
+                id: commandsNavButton
+                anchors.top: converterNavButton.bottom
+                anchors.topMargin: 6
+                module: "commands"
+                text: qsTr("Commands")
+            }
+
+            ModuleButton {
+                anchors.top: commandsNavButton.bottom
+                anchors.topMargin: 6
+                module: "whisper"
+                text: qsTr("Whisper")
+            }
+
+            ModuleButton {
+                anchors.bottom: aboutNavButton.top
+                anchors.bottomMargin: 5
+                module: "settings"
+                text: qsTr("Settings")
+            }
+
+            ModuleButton {
+                id: aboutNavButton
                 anchors.bottom: exitButton.top
                 anchors.bottomMargin: 5
                 module: "about"
@@ -621,6 +601,11 @@ ApplicationWindow {
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
                     text: window.currentModule === "screen" ? qsTr("Screen")
+                        : window.currentModule === "notes" ? qsTr("Quick Notes")
+                        : window.currentModule === "converter" ? qsTr("Converter")
+                        : window.currentModule === "commands" ? qsTr("Command Shortcuts")
+                        : window.currentModule === "whisper" ? qsTr("Whisper")
+                        : window.currentModule === "settings" ? qsTr("Settings")
                         : window.currentModule === "about" ? qsTr("About") : qsTr("Clipboard")
                     color: window.textColor
                     font.pixelSize: 17
@@ -662,6 +647,233 @@ ApplicationWindow {
                         closesWindow: true
                         Accessible.name: qsTr("Close")
                         onClicked: window.close()
+                    }
+                }
+            }
+
+            ModulePage {
+                module: "whisper"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+                spacing: 12
+
+                ShortcutSetting {
+                    heading: qsTr("Start or stop dictation")
+                    shortcutController: whisperShortcut
+                }
+
+                WhisperView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                }
+            }
+
+            ModulePage {
+                module: "commands"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+
+                CommandShortcutsView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                }
+            }
+
+            ModulePage {
+                module: "converter"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+
+                ConverterView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                }
+            }
+
+            ModulePage {
+                module: "notes"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+                spacing: 14
+
+                ShortcutSetting {
+                    heading: qsTr("Open Quick Note")
+                    shortcutController: notesShortcut
+                }
+
+                FolderSetting {
+                    folder: quickNotes.defaultFolder
+                    onChooseRequested: quickNotes.chooseDefaultFolder()
+                }
+
+                Label {
+                    text: qsTr("Saved notes")
+                    color: window.textColor
+                    font.pixelSize: 19
+                    font.weight: Font.DemiBold
+                }
+
+                QuickNotesView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                }
+            }
+
+            ModulePage {
+                module: "settings"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.margins: 22
+                spacing: 14
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: autoStartRow.implicitHeight + 20
+
+                    RowLayout {
+                        id: autoStartRow
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 20
+
+                        Label {
+                            Layout.fillWidth: true
+                            text: qsTr("Auto Start")
+                            color: window.textColor
+                            font.pixelSize: 14
+                            font.weight: Font.DemiBold
+                        }
+
+                        CheckBox {
+                            Accessible.name: qsTr("Auto Start")
+                            checked: appConfig.autoStart
+                            nextCheckState: function() {
+                                appConfig.setAutoStart(!appConfig.autoStart)
+                                return appConfig.autoStart ? Qt.Checked : Qt.Unchecked
+                            }
+                        }
+                    }
+                }
+
+                Panel {
+                    Layout.fillWidth: true
+                    implicitHeight: activeConfigRow.implicitHeight + 20
+
+                    RowLayout {
+                        id: activeConfigRow
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 20
+                        spacing: 12
+
+                        LineIcon { symbol: "folder" }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Label {
+                                text: qsTr("Active config")
+                                color: window.textColor
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                            }
+
+                            Label {
+                                Layout.fillWidth: true
+                                text: appConfig.activePath
+                                textFormat: Text.PlainText
+                                color: window.mutedColor
+                                elide: Text.ElideMiddle
+                                HoverHandler { id: configPathHover }
+                                ToolTip.visible: configPathHover.hovered && truncated
+                                ToolTip.text: text
+                            }
+                        }
+
+                        AboutAction {
+                            id: openConfigFolderButton
+                            Layout.preferredWidth: 36
+                            Accessible.name: qsTr("Open config folder")
+                            ToolTip.text: Accessible.name
+                            ToolTip.visible: hovered
+                            ToolTip.delay: 500
+                            onClicked: appConfig.openConfigFolder()
+
+                            contentItem: Item {
+                                LineIcon {
+                                    anchors.centerIn: parent
+                                    symbol: "folder"
+                                    ink: window.textColor
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item { Layout.fillHeight: true }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    AboutAction {
+                        text: qsTr("Restore factory settings")
+                        onClicked: factoryResetMessage.showConfirmation()
+                    }
+
+                    Label {
+                        id: configMessage
+                        Layout.fillWidth: true
+                        horizontalAlignment: Text.AlignRight
+                        text: appConfig.message
+                        textFormat: Text.PlainText
+                        color: appConfig.messageError ? "#ffb4ab" : "#a6e3b2"
+                        elide: Text.ElideRight
+                        opacity: 0
+                        Accessible.ignored: opacity === 0
+
+                        function showMessage() {
+                            opacity = text.length > 0 ? 1 : 0
+                            messageTimeout.restart()
+                        }
+
+                        Behavior on opacity {
+                            id: messageFade
+                            NumberAnimation {
+                                duration: messageFade.targetValue === 0 ? 550 : 160
+                                easing.type: Easing.OutCubic
+                            }
+                        }
+
+                        Timer {
+                            id: messageTimeout
+                            interval: 3000
+                            onTriggered: configMessage.opacity = 0
+                        }
+
+                        Connections {
+                            target: appConfig
+                            function onMessageChanged() { configMessage.showMessage() }
+                        }
+
+                        Component.onCompleted: showMessage()
+                    }
+
+                    AboutAction {
+                        text: qsTr("Load Config")
+                        onClicked: appConfig.loadConfig()
+                    }
+
+                    AboutAction {
+                        text: qsTr("Save Config")
+                        onClicked: appConfig.saveConfig()
                     }
                 }
             }
@@ -1216,62 +1428,9 @@ ApplicationWindow {
                     }
                 }
 
-                Panel {
-                    Layout.fillWidth: true
-                    implicitHeight: folderRow.implicitHeight + 20
-
-                    RowLayout {
-                        id: folderRow
-                        anchors.fill: parent
-                        anchors.margins: 10
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 20
-                        spacing: 12
-
-                        LineIcon { symbol: "folder" }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 4
-
-                            Label {
-                                text: qsTr("Save folder")
-                                color: window.textColor
-                                font.pixelSize: 14
-                                font.weight: Font.DemiBold
-                            }
-
-                            Label {
-                                Layout.fillWidth: true
-                                text: screenCapture.saveFolder
-                                textFormat: Text.PlainText
-                                color: window.mutedColor
-                                elide: Text.ElideMiddle
-                                HoverHandler { id: folderHover }
-                                ToolTip.visible: folderHover.hovered && truncated
-                                ToolTip.text: text
-                            }
-                        }
-
-                        Button {
-                            id: chooseFolderButton
-                            text: qsTr("Choose folder…")
-                            hoverEnabled: true
-                            onClicked: screenCapture.chooseSaveFolder()
-
-                            background: Rectangle {
-                                implicitWidth: 100
-                                implicitHeight: 36
-                                radius: 6
-                                color: chooseFolderButton.down ? "#505050"
-                                     : chooseFolderButton.hovered ? "#454545" : "#353535"
-                                border.color: chooseFolderButton.visualFocus ? window.accentColor
-                                            : chooseFolderButton.hovered ? "#707070" : "#515151"
-                                Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                                Behavior on border.color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                            }
-                        }
-                    }
+                FolderSetting {
+                    folder: screenCapture.saveFolder
+                    onChooseRequested: screenCapture.chooseSaveFolder()
                 }
 
                 Label {

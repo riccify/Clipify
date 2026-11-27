@@ -1,4 +1,5 @@
 #include "TextRecognition.h"
+#include "AppConfig.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -62,6 +63,7 @@ QString recognizedParagraphs(const QByteArray &tsv)
 
 TextRecognition::TextRecognition(QObject *parent) : QObject(parent)
 {
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, &TextRecognition::accurateChanged);
     connect(&process_, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart)
             setStatus(tr("Install Tesseract to recognize text."));
@@ -81,14 +83,15 @@ TextRecognition::TextRecognition(QObject *parent) : QObject(parent)
 
 bool TextRecognition::accurate() const
 {
-    return settings_.value("clipboard/accurateOcr", false).toBool();
+    return AppConfig::instance().value("clipboard/accurateOcr", false).toBool();
 }
 
 void TextRecognition::setAccurate(bool accurate)
 {
     if (accurate == this->accurate())
         return;
-    settings_.setValue("clipboard/accurateOcr", accurate);
+    if (!AppConfig::instance().setValue("clipboard/accurateOcr", accurate))
+        return;
     setStatus({});
     emit accurateChanged();
 }

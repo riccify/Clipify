@@ -1,4 +1,5 @@
 #include "ScreenCapture.h"
+#include "AppConfig.h"
 #include "ClipboardModule.h"
 
 #include <QApplication>
@@ -226,6 +227,10 @@ private:
 
 ScreenCapture::ScreenCapture(ClipboardModule &clipboard) : clipboard_(clipboard)
 {
+    connect(&AppConfig::instance(), &AppConfig::reloaded, this, [this] {
+        emit saveFolderChanged();
+        refreshGallery();
+    });
 }
 
 ScreenCapture::~ScreenCapture()
@@ -235,7 +240,7 @@ ScreenCapture::~ScreenCapture()
 
 QString ScreenCapture::saveFolder() const
 {
-    return settings_.value("screen/saveFolder", defaultScreenshotFolder()).toString();
+    return AppConfig::instance().value("screen/saveFolder", defaultScreenshotFolder()).toString();
 }
 
 void ScreenCapture::chooseSaveFolder()
@@ -251,7 +256,8 @@ void ScreenCapture::chooseSaveFolder()
     if (folder.isEmpty() || folder == currentFolder)
         return;
 
-    settings_.setValue("screen/saveFolder", folder);
+    if (!AppConfig::instance().setValue("screen/saveFolder", folder))
+        return;
     emit saveFolderChanged();
     refreshGallery();
 }

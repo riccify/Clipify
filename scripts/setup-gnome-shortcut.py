@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Register Clipify's history and screenshot shortcuts in GNOME Settings."""
+"""Register Clipify's global shortcuts in GNOME Settings."""
 
 import re
 import sys
@@ -54,6 +54,8 @@ for name, label, default, service_suffix, object_suffix, method in (
     ("clipify-screen", "Clipify Screenshot Selection", "<Super><Shift>s", ".Screen", "/Screen", "CaptureScreen"),
     ("clipify-full-screen", "Clipify Full Screenshot", "<Control>Print", ".FullScreen", "/FullScreen", "CaptureScreen"),
     ("clipify-focused-window", "Clipify Focused Window Screenshot", "<Super>Print", ".FocusedWindow", "/FocusedWindow", "CaptureScreen"),
+    ("clipify-whisper", "Clipify Whisper Dictation", "<Super><Shift>d", ".Whisper", "/Whisper", "ToggleDictation"),
+    ("clipify-notes", "Clipify Quick Notes", "<Super>n", ".Notes", "/Notes", "OpenNotes"),
     ("clipify-ocr", "Clipify Copy Text from Screenshot", "<Alt>Print", ".Ocr", "/Ocr", "CaptureScreen"),
 ):
     path = prefix + name + "/"
@@ -63,10 +65,10 @@ for name, label, default, service_suffix, object_suffix, method in (
 
     accelerator = default
     conflict = occupied.get(normalized(accelerator))
-    fallback = "<Super><Shift>v"
-    if conflict and name == "clipify" and normalized(fallback) not in occupied:
+    fallback = {"clipify": "<Super><Shift>v", "clipify-notes": "<Super><Shift>n"}.get(name)
+    if conflict and fallback and normalized(fallback) not in occupied:
         accelerator = fallback
-        print(f"{label}: Super+V is already used by {conflict}. Clipify uses Super+Shift+V.", file=sys.stderr)
+        print(f"{label}: {default} is already used by {conflict}. Clipify uses {fallback}.", file=sys.stderr)
     elif conflict:
         print(f"{label}: {accelerator} is already used by {conflict}. Choose a free shortcut in Clipify.", file=sys.stderr)
         accelerator = ""

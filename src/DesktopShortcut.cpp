@@ -1,4 +1,5 @@
 #include "DesktopShortcut.h"
+#include "AppConfig.h"
 
 #include <QClipboard>
 #include <QCursor>
@@ -35,6 +36,8 @@ struct DesktopShortcut::Platform
     unsigned int shortcutMask = 0;
     bool usesGnome = false;
     bool ready = false;
+    bool keyHeld = false;
+    QTimer releasePoll;
     std::unique_ptr<QSocketNotifier> notifier;
 
     ~Platform()
@@ -67,6 +70,12 @@ ShortcutDefinition shortcutDefinition(DesktopShortcut::Action action)
         return {"Super+Print", "<Super>Print", "screen/focusedWindowAccelerator", "clipify-focused-window", "FocusedWindow"};
     case Action::Ocr:
         return {"Alt+Print", "<Alt>Print", "clipboard/ocrAccelerator", "clipify-ocr", "Ocr"};
+    case Action::Notes:
+        return {"Super+N", "<Super>n", "notes/shortcutAccelerator", "clipify-notes", "Notes"};
+    case Action::Whisper:
+        return {"Super+Shift+D", "<Super><Shift>d", "whisper/shortcutAccelerator", "clipify-whisper", "Whisper"};
+    case Action::Command:
+        return {"", "", "", "", ""};
     case Action::History:
         return {"Super+V", "<Super>v", "clipboard/shortcutAccelerator", "clipify", ""};
     }
@@ -170,12 +179,20 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
     : QObject(parent), platform_(std::make_unique<Platform>()),
       shortcut_(QString::fromLatin1(shortcutDefinition(action).label)), action_(action)
 {
+    auto &config = AppConfig::instance();
+    const auto definition = shortcutDefinition(action_);
+    const auto seedDefault = [&] {
+        if (action_ != Action::Command && !config.value(definition.settingsKey).isValid())
+            config.setValue(definition.settingsKey, QString::fromLatin1(definition.accelerator));
+    };
 #ifdef CLIPIFY_X11
     if (QGuiApplication::platformName() == "xcb")
         platform_->display = XOpenDisplay(nullptr);
     auto *display = platform_->display;
-    if (!display)
+    if (!display) {
+        seedDefault();
         return;
+    }
 
     platform_->vKey = XKeysymToKeycode(display, XK_v);
     platform_->controlKey = XKeysymToKeycode(display, XK_Control_L);
@@ -188,13 +205,13 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
     if (action_ == Action::History && (!platform_->fakeKeyEvent || !queryExtension
         || !queryExtension(display, &event, &error, &major, &minor)
         || !platform_->vKey || !platform_->controlKey)) {
+        seedDefault();
         setError(tr("Super+V requires X11 keyboard and XTEST support."));
         return;
     }
 
-    const auto definition = shortcutDefinition(action_);
     const QString desktopShortcutPath = shortcutPath(definition);
-    platform_->usesGnome = gnomeShortcutConfigured(desktopShortcutPath);
+    platform_->usesGnome = action_ != Action::Command && gnomeShortcutConfigured(desktopShortcutPath);
     if (platform_->usesGnome) {
         auto bus = QDBusConnection::sessionBus();
         const QString suffix = QString::fromLatin1(definition.dbusSuffix);
@@ -206,24 +223,48 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
                                QDBusConnection::ExportScriptableInvokables)
             && bus.registerService(service)) {
             platform_->ready = true;
-            const QString accelerator = readGnomeShortcut(desktopShortcutPath);
-            shortcut_ = shortcutLabel(accelerator);
+            if (action_ == Action::Whisper) {
+                platform_->releasePoll.setInterval(15);
+                connect(&platform_->releasePoll, &QTimer::timeout, this, [this] {
+                    const QString name = QString(activeAccelerator_).remove(QRegularExpression("<[^>]+>"));
+                    const KeyCode key = XKeysymToKeycode(platform_->display, XStringToKeysym(name.toLatin1().constData()));
+                    char keys[32]{};
+                    XQueryKeymap(platform_->display, keys);
+                    if (!key || !(keys[key / 8] & (1 << (key % 8)))) {
+                        platform_->releasePoll.stop();
+                        emit released();
+                    }
+                });
+            }
+            activeAccelerator_ = readGnomeShortcut(desktopShortcutPath);
+            shortcut_ = shortcutLabel(activeAccelerator_);
+            if (!config.value(definition.settingsKey).isValid())
+                config.setValue(definition.settingsKey, activeAccelerator_);
+            reloadShortcut();
+            connect(&config, &AppConfig::restoringDefaults, this, &DesktopShortcut::releaseForReset);
+            connect(&config, &AppConfig::reloaded, this, &DesktopShortcut::reloadShortcut);
             return;
         }
 
         setError(tr("Clipify could not register its desktop shortcut service. Is it already running?"));
+        seedDefault();
         return;
     }
 
     platform_->ready = true;
     const QString defaultAccelerator = QString::fromLatin1(definition.accelerator);
-    QString accelerator = settings_.value(definition.settingsKey, defaultAccelerator).toString();
+    QString accelerator = config.value(definition.settingsKey, defaultAccelerator).toString();
     if (action_ == Action::Screenshot && accelerator == "<Control><Shift><Super>s")
         accelerator = defaultAccelerator;
-    if (!accelerator.isEmpty()) {
-        shortcut_ = shortcutLabel(accelerator);
-        if (!applyShortcut(accelerator))
-            setError(tr("The key combination could not be registered. Choose another combination."));
+    shortcut_ = shortcutLabel(accelerator);
+    if (accelerator.isEmpty() || applyShortcut(accelerator))
+        activeAccelerator_ = accelerator;
+    else
+        setError(tr("The key combination could not be registered. Choose another combination."));
+    if (action_ != Action::Command) {
+        config.setValue(definition.settingsKey, accelerator);
+        connect(&config, &AppConfig::restoringDefaults, this, &DesktopShortcut::releaseForReset);
+        connect(&config, &AppConfig::reloaded, this, &DesktopShortcut::reloadShortcut);
     }
 
     platform_->notifier = std::make_unique<QSocketNotifier>(ConnectionNumber(display), QSocketNotifier::Read);
@@ -231,6 +272,14 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
         while (XPending(display)) {
             XEvent event;
             XNextEvent(display, &event);
+            if (action_ == Action::Whisper && event.type == KeyPress
+                && event.xkey.keycode == platform_->shortcutKey) {
+                if (!platform_->keyHeld) {
+                    platform_->keyHeld = true;
+                    emit pressed();
+                }
+                continue;
+            }
             // Open on release so the passive grab no longer owns the keyboard.
             if (event.type != KeyRelease || event.xkey.keycode != platform_->shortcutKey)
                 continue;
@@ -242,13 +291,31 @@ DesktopShortcut::DesktopShortcut(Action action, QObject *parent)
                     continue;
             }
             platform_->shortcutTime = event.xkey.time;
-            emit activated();
+            if (action_ == Action::Whisper) {
+                platform_->keyHeld = false;
+                emit released();
+            } else {
+                emit activated();
+            }
         }
     });
+#else
+    seedDefault();
 #endif
 }
 
 DesktopShortcut::~DesktopShortcut() = default;
+
+QVariantMap DesktopShortcut::defaultAccelerators()
+{
+    QVariantMap defaults;
+    for (const auto action : {Action::History, Action::Screenshot, Action::FullScreen,
+                              Action::FocusedWindow, Action::Ocr, Action::Notes, Action::Whisper}) {
+        const auto definition = shortcutDefinition(action);
+        defaults.insert(definition.settingsKey, QString::fromLatin1(definition.accelerator));
+    }
+    return defaults;
+}
 
 bool DesktopShortcut::canChangeShortcut() const
 {
@@ -259,12 +326,9 @@ bool DesktopShortcut::canChangeShortcut() const
 #endif
 }
 
-QString DesktopShortcut::recordShortcut(int key, int modifierFlags)
+QString DesktopShortcut::acceleratorForKey(int key, int modifierFlags)
 {
 #ifdef CLIPIFY_X11
-    if (!canChangeShortcut())
-        return tr("Shortcut recording is unavailable on this desktop.");
-
     QString accelerator;
     for (const auto &modifier : modifiers) {
         if (modifierFlags & modifier.qt)
@@ -278,7 +342,7 @@ QString DesktopShortcut::recordShortcut(int key, int modifierFlags)
         if (const char *name = XKeysymToString(symbol))
             accelerator += QString::fromLatin1(name);
         else
-            return tr("This key is unavailable as a global shortcut.");
+            return {};
     } else {
         switch (key) {
         case Qt::Key_Escape: accelerator += "Escape"; break;
@@ -300,15 +364,52 @@ QString DesktopShortcut::recordShortcut(int key, int modifierFlags)
         case Qt::Key_Right: accelerator += "Right"; break;
         case Qt::Key_Up: accelerator += "Up"; break;
         case Qt::Key_Down: accelerator += "Down"; break;
-        default: return tr("This key is unavailable as a global shortcut.");
+        default: return {};
         }
     }
 
+    return accelerator;
+#else
+    Q_UNUSED(key);
+    Q_UNUSED(modifierFlags);
+    return {};
+#endif
+}
+
+QString DesktopShortcut::displayAccelerator(const QString &accelerator)
+{
+#ifdef CLIPIFY_X11
+    return shortcutLabel(accelerator);
+#else
+    return accelerator;
+#endif
+}
+
+bool DesktopShortcut::bindCommand(const QString &accelerator)
+{
+    return action_ == Action::Command && canChangeShortcut()
+        && accelerator != "<Control>v" && applyShortcut(accelerator);
+}
+
+QString DesktopShortcut::recordShortcut(int key, int modifierFlags)
+{
+#ifdef CLIPIFY_X11
+    if (!canChangeShortcut() || action_ == Action::Command)
+        return tr("Shortcut recording is unavailable on this desktop.");
+
+    const QString accelerator = acceleratorForKey(key, modifierFlags);
+    if (accelerator.isEmpty())
+        return tr("This key is unavailable as a global shortcut.");
     if (accelerator == "<Control>v")
         return tr("Ctrl+V is reserved for pasting.");
     if (!applyShortcut(accelerator))
         return tr("That shortcut could not be registered. Choose another combination.");
 
+    if (!AppConfig::instance().setValue(shortcutDefinition(action_).settingsKey, accelerator)) {
+        applyShortcut(activeAccelerator_);
+        return tr("Could not save the shortcut in config.json.");
+    }
+    activeAccelerator_ = accelerator;
     shortcut_ = shortcutLabel(accelerator);
     emit shortcutChanged();
     setError({});
@@ -317,6 +418,64 @@ QString DesktopShortcut::recordShortcut(int key, int modifierFlags)
     Q_UNUSED(key);
     Q_UNUSED(modifierFlags);
     return tr("Shortcut recording is unavailable on this desktop.");
+#endif
+}
+
+void DesktopShortcut::releaseForReset()
+{
+#ifdef CLIPIFY_X11
+    if (!activeAccelerator_.isEmpty() && applyShortcut({}))
+        activeAccelerator_.clear();
+#endif
+}
+
+void DesktopShortcut::reloadShortcut(bool factoryReset)
+{
+#ifdef CLIPIFY_X11
+    auto &config = AppConfig::instance();
+    const auto definition = shortcutDefinition(action_);
+    QString requested = config.value(definition.settingsKey).toString();
+    if (factoryReset && platform_->usesGnome && !requested.isEmpty()) {
+        static const QRegularExpression quotedShortcut("'([^']+)'");
+        QStringList systemBindings;
+        for (const QString &schema : {QStringLiteral("org.gnome.shell.keybindings"),
+                                      QStringLiteral("org.gnome.desktop.wm.keybindings"),
+                                      QStringLiteral("org.gnome.mutter.keybindings"),
+                                      QStringLiteral("org.gnome.settings-daemon.plugins.media-keys")}) {
+            auto bindings = quotedShortcut.globalMatch(runSettings({"list-recursively", schema}));
+            while (bindings.hasNext())
+                systemBindings.append(shortcutLabel(bindings.next().captured(1)));
+        }
+        if (systemBindings.contains(shortcutLabel(requested))) {
+            const QString fallback = action_ == Action::History ? QStringLiteral("<Super><Shift>v")
+                                   : action_ == Action::Notes ? QStringLiteral("<Super><Shift>n") : QString();
+            if (fallback.isEmpty() || systemBindings.contains(shortcutLabel(fallback))) {
+                config.reportShortcutConflict(shortcutLabel(requested));
+                requested.clear();
+            } else {
+                requested = fallback;
+            }
+            config.setValue(definition.settingsKey, requested);
+        }
+    }
+    if (requested == activeAccelerator_ && shortcut_ == shortcutLabel(requested))
+        return;
+
+    if (!applyShortcut(requested)) {
+        config.reportShortcutConflict(shortcutLabel(requested));
+        config.setValue(definition.settingsKey, activeAccelerator_);
+        shortcut_ = shortcutLabel(activeAccelerator_);
+        emit shortcutChanged();
+        setError(tr("The requested shortcut could not be registered."));
+        return;
+    }
+
+    activeAccelerator_ = requested;
+    shortcut_ = shortcutLabel(requested);
+    emit shortcutChanged();
+    setError({});
+#else
+    Q_UNUSED(factoryReset);
 #endif
 }
 
@@ -333,7 +492,7 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
         }
     }
     const KeyCode key = XKeysymToKeycode(display, XStringToKeysym(keyName.toLatin1().constData()));
-    if (!key)
+    if (!key && !accelerator.isEmpty())
         return false;
 
     if (platform_->usesGnome) {
@@ -343,7 +502,8 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
         auto paths = pathPattern.globalMatch(bindings);
         while (paths.hasNext()) {
             const QString path = paths.next().captured(1);
-            if (path != desktopShortcutPath && shortcutLabel(readGnomeShortcut(path)) == shortcutLabel(accelerator))
+            if (!accelerator.isEmpty() && path != desktopShortcutPath
+                && shortcutLabel(readGnomeShortcut(path)) == shortcutLabel(accelerator))
                 return false;
         }
         bool saved = false;
@@ -358,6 +518,16 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
     const unsigned int numLock = numLockMask(display);
     const unsigned int lockMasks[] = {0u, LockMask, numLock, numLock | LockMask};
     const Window root = DefaultRootWindow(display);
+    if (accelerator.isEmpty()) {
+        if (platform_->shortcutKey) {
+            for (const auto locks : lockMasks)
+                XUngrabKey(display, platform_->shortcutKey, platform_->shortcutMask | locks, root);
+            XFlush(display);
+        }
+        platform_->shortcutKey = 0;
+        platform_->shortcutMask = 0;
+        return true;
+    }
     grabFailed = false;
     const auto previousHandler = XSetErrorHandler(handleGrabError);
     for (const auto locks : lockMasks)
@@ -378,7 +548,6 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
     }
     platform_->shortcutKey = key;
     platform_->shortcutMask = mask;
-    settings_.setValue(shortcutDefinition(action_).settingsKey, accelerator);
     return true;
 #else
     Q_UNUSED(accelerator);
@@ -388,14 +557,50 @@ bool DesktopShortcut::applyShortcut(const QString &accelerator)
 
 void DesktopShortcut::CaptureScreen()
 {
-    if (action_ != Action::History)
+    if (action_ != Action::History && action_ != Action::Notes && action_ != Action::Whisper && action_ != Action::Command)
         emit activated();
 }
 
 void DesktopShortcut::ShowHistory()
 {
-    if (action_ != Action::History)
+    if (action_ == Action::History)
+        activateFromDesktop();
+}
+
+void DesktopShortcut::OpenNotes()
+{
+    if (action_ == Action::Notes)
+        activateFromDesktop();
+}
+
+void DesktopShortcut::ToggleDictation()
+{
+#ifdef CLIPIFY_X11
+    if (action_ != Action::Whisper || !platform_->usesGnome || platform_->releasePoll.isActive())
         return;
+    emit pressed();
+    platform_->releasePoll.start();
+#endif
+}
+
+bool DesktopShortcut::rememberExternalFocus()
+{
+#ifdef CLIPIFY_X11
+    platform_->previousFocus = None;
+    if (!platform_->display || !platform_->fakeKeyEvent || !platform_->vKey
+        || !platform_->controlKey || QGuiApplication::focusWindow())
+        return false;
+
+    int revert = 0;
+    XGetInputFocus(platform_->display, &platform_->previousFocus, &revert);
+    return platform_->previousFocus != None && platform_->previousFocus != PointerRoot;
+#else
+    return false;
+#endif
+}
+
+void DesktopShortcut::activateFromDesktop()
+{
 #ifdef CLIPIFY_X11
     auto *display = platform_->display;
     if (!display)
@@ -470,10 +675,17 @@ void DesktopShortcut::pasteClipboard()
         return;
     }
 
-    setError({});
+    if (action_ != Action::Whisper)
+        setError({});
+    const QString expected = action_ == Action::Whisper ? QGuiApplication::clipboard()->text() : QString();
     auto *timer = new QTimer(this);
     timer->setInterval(20);
-    connect(timer, &QTimer::timeout, this, [this, timer, display, target, attempts = 0]() mutable {
+    connect(timer, &QTimer::timeout, this, [this, timer, display, target, expected, attempts = 0]() mutable {
+        if (!expected.isEmpty() && QGuiApplication::clipboard()->text() != expected) {
+            timer->stop();
+            timer->deleteLater();
+            return;
+        }
         Window focus = None;
         int revert = 0;
         XGetInputFocus(display, &focus, &revert);
@@ -492,7 +704,8 @@ void DesktopShortcut::pasteClipboard()
             timer->stop();
             timer->deleteLater();
         } else if (++attempts >= 25) {
-            setError(tr("The previous window did not regain focus. Paste manually with Ctrl+V."));
+            if (action_ != Action::Whisper)
+                setError(tr("The previous window did not regain focus. Paste manually with Ctrl+V."));
             timer->stop();
             timer->deleteLater();
         }

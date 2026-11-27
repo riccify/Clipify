@@ -3,6 +3,11 @@
 #include "ScreenCapture.h"
 #include "TextRecognition.h"
 #include "ReleaseCheck.h"
+#include "QuickNotes.h"
+#include "AppConfig.h"
+#include "Converter.h"
+#include "CommandShortcuts.h"
+#include "WhisperModule.h"
 
 #include <QApplication>
 #include <QIcon>
@@ -113,6 +118,7 @@ int main(int argc, char *argv[])
         gnomeSetupWarning = configureGnomeShortcuts();
     }
 #endif
+    auto &appConfig = AppConfig::instance();
     QQuickStyle::setStyle("Basic");
     const QIcon icon(":/clipify/assets/clipify-app-icon.png");
     app.setWindowIcon(icon);
@@ -123,6 +129,37 @@ int main(int argc, char *argv[])
     DesktopShortcut fullScreenShortcut(DesktopShortcut::Action::FullScreen);
     DesktopShortcut focusedWindowShortcut(DesktopShortcut::Action::FocusedWindow);
     DesktopShortcut ocrShortcut(DesktopShortcut::Action::Ocr);
+    DesktopShortcut notesShortcut(DesktopShortcut::Action::Notes);
+    QuickNotes quickNotes;
+    Converter converter;
+    CommandShortcuts commandShortcuts;
+    DesktopShortcut whisperShortcut(DesktopShortcut::Action::Whisper);
+    WhisperModule whisperModule;
+    bool pasteDictation = false;
+    bool stopOnRelease = false;
+    QObject::connect(&whisperShortcut, &DesktopShortcut::pressed, &whisperModule, [&] {
+        if (!whisperModule.busy()) {
+            pasteDictation = whisperShortcut.rememberExternalFocus();
+            stopOnRelease = whisperModule.holdToTalk();
+            whisperModule.toggleRecording();
+        } else if (whisperModule.recording() && !stopOnRelease && !whisperModule.holdToTalk()) {
+            whisperModule.toggleRecording();
+        }
+    });
+    QObject::connect(&whisperShortcut, &DesktopShortcut::released, &whisperModule, [&] {
+        if (stopOnRelease && whisperModule.recording())
+            whisperModule.toggleRecording();
+    });
+    QObject::connect(&whisperModule, &WhisperModule::transcriptReady, &whisperShortcut, [&] {
+        if (pasteDictation)
+            whisperShortcut.pasteClipboard();
+    });
+    QObject::connect(&whisperModule, &WhisperModule::changed, &whisperShortcut, [&] {
+        if (!whisperModule.busy()) {
+            pasteDictation = false;
+            stopOnRelease = false;
+        }
+    });
     ScreenCapture screenCapture(clipboard);
     TextRecognition textRecognition;
     QObject::connect(&ocrShortcut, &DesktopShortcut::activated, &screenCapture, &ScreenCapture::beginTextSelection);
@@ -144,6 +181,13 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty("screenCapture", &screenCapture);
     engine.rootContext()->setContextProperty("ocrShortcut", &ocrShortcut);
     engine.rootContext()->setContextProperty("textRecognition", &textRecognition);
+    engine.rootContext()->setContextProperty("notesShortcut", &notesShortcut);
+    engine.rootContext()->setContextProperty("quickNotes", &quickNotes);
+    engine.rootContext()->setContextProperty("appConfig", &appConfig);
+    engine.rootContext()->setContextProperty("converter", &converter);
+    engine.rootContext()->setContextProperty("commandShortcuts", &commandShortcuts);
+    engine.rootContext()->setContextProperty("whisperShortcut", &whisperShortcut);
+    engine.rootContext()->setContextProperty("whisperModule", &whisperModule);
     engine.load(QUrl("qrc:/qt/qml/Clipify/qml/Main.qml"));
     if (engine.rootObjects().size() != 1)
         return 1;
@@ -154,6 +198,14 @@ int main(int argc, char *argv[])
 
     engine.load(QUrl("qrc:/qt/qml/Clipify/qml/HistoryPopup.qml"));
     if (engine.rootObjects().size() != 2)
+        return 1;
+
+    engine.load(QUrl("qrc:/qt/qml/Clipify/qml/QuickNotePopup.qml"));
+    if (engine.rootObjects().size() != 3)
+        return 1;
+
+    engine.load(QUrl("qrc:/qt/qml/Clipify/qml/WhisperOverlay.qml"));
+    if (engine.rootObjects().size() != 4)
         return 1;
 
     QMenu trayMenu;
