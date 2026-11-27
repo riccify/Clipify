@@ -16,7 +16,8 @@ class DesktopShortcut : public QObject
     Q_PROPERTY(bool canChangeShortcut READ canChangeShortcut CONSTANT)
 
 public:
-    explicit DesktopShortcut(QObject *parent = nullptr);
+    enum class Action { History, Screenshot, FullScreen, FocusedWindow, Ocr };
+    explicit DesktopShortcut(Action action = Action::History, QObject *parent = nullptr);
     ~DesktopShortcut() override;
 
     QString error() const { return error_; }
@@ -24,8 +25,9 @@ public:
     bool canChangeShortcut() const;
     Q_INVOKABLE QString recordShortcut(int key, int modifiers);
     Q_INVOKABLE void showAtPointer(QQuickWindow *window);
-    Q_INVOKABLE void paste(const QString &text);
+    Q_INVOKABLE void pasteClipboard();
     Q_SCRIPTABLE Q_INVOKABLE void ShowHistory();
+    Q_SCRIPTABLE Q_INVOKABLE void CaptureScreen();
 
 signals:
     void activated();
@@ -38,6 +40,7 @@ private:
     struct Platform;
     std::unique_ptr<Platform> platform_;
     QString error_;
-    QString shortcut_ = QStringLiteral("Super+V");
+    QString shortcut_;
+    Action action_;
     QSettings settings_;
 };

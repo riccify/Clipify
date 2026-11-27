@@ -2,6 +2,7 @@
 
 #include <QAbstractListModel>
 #include <QDateTime>
+#include <QImage>
 #include <QSettings>
 #include <QSqlDatabase>
 #include <QVector>
@@ -27,6 +28,9 @@ public:
     QHash<int, QByteArray> roleNames() const override;
     Q_INVOKABLE void loadOlderEntries();
     Q_INVOKABLE void copyEntry(int row);
+    Q_INVOKABLE bool copyEntryById(const QString &entryId);
+    Q_INVOKABLE void previewEntry(const QString &entryId);
+    void copyScreenshot(const QImage &image, const QString &title);
     Q_INVOKABLE void deleteEntry(int row);
     Q_INVOKABLE QVariantList recentEntries();
     Q_INVOKABLE bool deleteEntryById(const QString &entryId);
@@ -45,9 +49,10 @@ private:
         qint64 id;
         QString text;
         QDateTime copiedAt;
+        bool isImage;
     };
 
-    enum Role { ClipboardText = Qt::UserRole + 1, CopiedAt };
+    enum Role { ClipboardText = Qt::UserRole + 1, CopiedAt, IsImage, EntryId };
 
     QSettings settings_;
     QSqlDatabase database_;

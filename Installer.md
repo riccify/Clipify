@@ -1,53 +1,82 @@
-# Clipify installieren
+# Installing Clipify
 
-## Zorin OS 18.1 und Ubuntu 24.04
+These instructions cover **Zorin OS 18.1 and Ubuntu 24.04 on X11**. Run `echo "$XDG_SESSION_TYPE"` in a terminal to check your session type.
 
-Der aktuelle Desktop-Client wird aus dem Quellcode gebaut. Die folgenden Schritte sind für eine X11-Sitzung vorgesehen. Mit `echo "$XDG_SESSION_TYPE"` lässt sich der Sitzungstyp prüfen.
+## Install the .deb
 
-### Pakete installieren
-
-```bash
-sudo apt update
-sudo apt install git build-essential cmake ninja-build \
-  qt6-base-dev qt6-declarative-dev libx11-dev libxtst6 \
-  libqt6sql6-sqlite qml6-module-qtqml qml6-module-qtqml-workerscript \
-  qml6-module-qtquick qml6-module-qtquick-controls \
-  qml6-module-qtquick-layouts qml6-module-qtquick-templates \
-  qml6-module-qtquick-window
-```
-
-### Client bauen
+From the folder containing the package, run:
 
 ```bash
-git clone https://github.com/riccify/Clipify.git
-cd Clipify
-cmake -S . -B build -G Ninja
-cmake --build build
+sudo apt install ./clipify_0.1.0_amd64.deb
 ```
 
-Wenn das Repository bereits ausgecheckt ist, direkt in dessen Stammordner wechseln. Im Entwicklungsworkspace heißt dieser Ordner `CLI/`.
+APT resolves the runtime dependencies, including Qt and the German and English **Fast** OCR models. The package adds Clipify to the application menu.
 
-### Super+V auf Zorin und GNOME einrichten
+On Zorin or GNOME, run `clipify-setup-gnome` once as your desktop user. Then open **Clipify** from the application menu.
 
-GNOME verwaltet das Kürzel für das Benutzerkonto. Das Setup daher einmal pro Benutzer in der laufenden Desktop-Sitzung ausführen.
+## Build and run from source
+
+Follow the [source build instructions](README.md#build-from-source) to install the dependencies, clone the repository, and compile Clipify. If you already have a checkout, run the CMake commands from its root. In the development workspace, the client checkout is named `CLI/`.
+
+On Zorin or GNOME, run `/usr/bin/python3 scripts/setup-gnome-shortcut.py` from the checkout before launching `./build/clipify`.
+
+To add the source build to your application menu and give it the Clipify taskbar icon, install it for your user account:
 
 ```bash
-sudo apt install python3-gi libglib2.0-bin
-/usr/bin/python3 scripts/setup-gnome-shortcut.py
+cmake --install build --prefix ~/.local
 ```
 
-Falls Clipify bereits läuft, die App über **Quit** im Tray beenden. Danach starten mit:
+Make sure `~/.local/bin` is on your desktop session's `PATH`. This installation also provides the `clipify-setup-gnome` and `clipify-install-ocr-best` commands. If the application menu still displays the default icon, refresh the local GTK icon cache with `gtk-update-icon-cache -f -t ~/.local/share/icons/hicolor`.
+
+To produce a `.deb` yourself, install `dpkg-dev` and run this from the repository root after building:
 
 ```bash
-./build/clipify
+cpack --config build/CPackConfig.cmake -G DEB -B build/packages
 ```
 
-Solange Clipify läuft, öffnet `Super+V` den Verlauf am Mauszeiger. Das Hauptfenster kann über das Tray-Menü wieder geöffnet werden. Auf anderen X11-Desktops registriert Clipify das Kürzel beim Start direkt, sofern es frei ist.
+## Global shortcuts on GNOME
 
-Unter **Clipboard → Clipboard history shortcut** auf die angezeigte Tastenkombination klicken und ein neues Kürzel drücken. `Esc` bricht die Aufnahme ab. Auf GNOME speichert Clipify die Auswahl in der Desktop-Belegung. Ein erneuter Aufruf des Setup-Skripts behält das gewählte Kürzel bei.
+GNOME stores key bindings per user. Run the setup command from your desktop session. If Clipify is running, choose **Quit** in the tray menu and start it again after setup. Run setup again after an update that adds new shortcut actions. The script preserves your existing Clipify bindings.
 
-### Häufige Probleme
+| Default | Action |
+| --- | --- |
+| `Super+V` | Open clipboard history at the pointer |
+| `Super+Shift+S` | Select a screenshot region |
+| `Ctrl+Print` | Capture the monitor under the pointer |
+| `Super+Print` | Capture the focused window |
+| `Alt+Print` | Select a region and copy its recognized text |
 
-- Wenn das GNOME-Skript ein bereits belegtes `Super+V` meldet, die Belegung in den GNOME-Tastatureinstellungen prüfen.
-- Eine Meldung über einen fehlenden Accessibility-Bus-Socket betrifft AT-SPI in der Desktop-Sitzung. Ab- und erneutes Anmelden kann den Socket wiederherstellen.
-- Windows ist als Zielplattform vorgesehen. Für Windows und Wayland gibt es noch keine verifizierte Installationsanleitung mit funktionierendem Verlaufshotkey.
+Other X11 desktops register available shortcuts when Clipify starts. To change a binding, click it under **Clipboard** or **Screen**, then press a key or key combination. Click the field again to cancel recording. Single-key bindings also apply globally. If your desktop already uses a shortcut, including GNOME's possible `Alt+Print` binding for window capture, free it in your desktop keyboard settings or choose an available binding in Clipify.
+
+Screenshots are saved as PNGs in the `Screenshots` folder within your Pictures directory and copied to the clipboard. To change the folder, go to **Screen → Save folder → Choose folder…**. The gallery shows screenshots from the selected folder.
+
+## Start in the tray at login
+
+After installing the `.deb`, register the autostart entry for your user:
+
+```bash
+install -Dm644 /usr/share/clipify/io.github.riccify.Clipify-autostart.desktop \\
+  "${XDG_CONFIG_HOME:-$HOME/.config}/autostart/io.github.riccify.Clipify-autostart.desktop"
+```
+
+For an installed source build, use `~/.local/share/clipify/io.github.riccify.Clipify-autostart.desktop` as the source file instead.
+
+You can also start Clipify in the tray with `clipify --background`. **Open Window** in the tray menu or **Clipify** in the application menu opens the running instance. Choose **Quit** in the tray to exit.
+
+## Optional Accurate OCR models
+
+Choose **Fast** or **Accurate** under **Clipboard**. Both recognize German and English locally and put the recognized text in the clipboard. The selected image stays in memory.
+
+**Fast** uses the language packages included in the installation steps. **Accurate** requires a one-time download of the `tessdata_best` models. Install `curl` if needed, then run:
+
+```bash
+clipify-install-ocr-best
+```
+
+From a source checkout, you can also use `sh scripts/install-ocr-best.sh`. Both OCR modes work offline once the models are installed.
+
+## Troubleshooting
+
+- If Clipify reports a shortcut conflict, check your desktop's keyboard settings and the other bindings in Clipify.
+- If the console reports a missing accessibility bus socket, signing out and back in may restore the session's AT-SPI socket.
+- Windows and Wayland support are planned. The global shortcuts in this guide are for X11.

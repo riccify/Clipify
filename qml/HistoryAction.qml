@@ -5,6 +5,7 @@ import QtQuick.Layouts
 ToolButton {
     id: action
     property bool removesEntry: false
+    property bool previewsEntry: false
     Layout.preferredWidth: 26
     Layout.preferredHeight: 26
     hoverEnabled: true
@@ -43,6 +44,12 @@ ToolButton {
                     ctx.lineTo(5, 14)
                     ctx.lineTo(11, 14)
                     ctx.lineTo(12, 5)
+                } else if (action.previewsEntry) {
+                    ctx.moveTo(1, 8)
+                    ctx.quadraticCurveTo(8, 0, 15, 8)
+                    ctx.quadraticCurveTo(8, 16, 1, 8)
+                    ctx.moveTo(10, 8)
+                    ctx.arc(8, 8, 2, 0, 2 * Math.PI)
                 } else {
                     ctx.rect(6, 6, 8, 8)
                     ctx.moveTo(10, 4)

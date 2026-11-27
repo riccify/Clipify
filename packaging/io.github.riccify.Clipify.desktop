@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Clipify
+Comment=Clipboard history, screenshots, and local text recognition
+Exec=clipify
+Icon=io.github.riccify.Clipify
+StartupWMClass=Clipify
+Categories=Utility;Qt;
+Terminal=false

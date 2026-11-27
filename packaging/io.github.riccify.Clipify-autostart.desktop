@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Clipify
+Comment=Start Clipify in the system tray
+Exec=clipify --background
+Icon=io.github.riccify.Clipify
+Terminal=false
+X-GNOME-Autostart-enabled=true

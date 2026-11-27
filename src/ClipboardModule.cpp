@@ -1,6 +1,13 @@
 #include "ClipboardModule.h"
 
+#include <QBuffer>
 #include <QClipboard>
+#include <QCursor>
+#include <QDialog>
+#include <QLabel>
+#include <QScreen>
+#include <QSqlRecord>
+#include <QVBoxLayout>
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
@@ -12,6 +19,7 @@
 #include <algorithm>
 
 namespace {
+constexpr auto imageTitleMime = "application/x-clipify-image-title";
 constexpr auto historyNumberKey = "clipboard/historyNumber";
 constexpr int defaultHistoryNumber = 20;
 constexpr int historyPageSize = 50;
@@ -39,11 +47,20 @@ ClipboardModule::ClipboardModule(QObject *parent)
         CREATE TABLE IF NOT EXISTS clipboard_entries (
             id INTEGER PRIMARY KEY,
             text TEXT NOT NULL,
-            copied_at_ms INTEGER NOT NULL
+            copied_at_ms INTEGER NOT NULL,
+            image_png BLOB
         )
     )")) {
         qWarning() << schema.lastError().text();
         setStorageError(tr("Could not initialize the local history database."));
+        database_.close();
+        return;
+    }
+
+    if (!database_.record("clipboard_entries").contains("image_png")
+        && !schema.exec("ALTER TABLE clipboard_entries ADD COLUMN image_png BLOB")) {
+        qWarning() << schema.lastError().text();
+        setStorageError(tr("Could not upgrade the local history database."));
         database_.close();
         return;
     }
@@ -94,13 +111,16 @@ QVariant ClipboardModule::data(const QModelIndex &index, int role) const
     switch (role) {
     case ClipboardText: return entry.text;
     case CopiedAt: return entry.copiedAt;
+    case IsImage: return entry.isImage;
+    case EntryId: return QString::number(entry.id);
     default: return {};
     }
 }
 
 QHash<int, QByteArray> ClipboardModule::roleNames() const
 {
-    return {{ClipboardText, "clipboardText"}, {CopiedAt, "copiedAt"}};
+    return {{ClipboardText, "clipboardText"}, {CopiedAt, "copiedAt"},
+            {IsImage, "isImage"}, {EntryId, "entryId"}};
 }
 
 void ClipboardModule::loadOlderEntries()
@@ -110,7 +130,7 @@ void ClipboardModule::loadOlderEntries()
 
     QSqlQuery query(database_);
     const QString filter = entries_.isEmpty() ? QString() : QStringLiteral("WHERE id < ? ");
-    const QString sql = "SELECT id, text, copied_at_ms FROM clipboard_entries "
+    const QString sql = "SELECT id, text, copied_at_ms, image_png IS NOT NULL FROM clipboard_entries "
                         + filter + "ORDER BY id DESC LIMIT ?";
     if (query.prepare(sql)) {
         if (!entries_.isEmpty())
@@ -120,7 +140,8 @@ void ClipboardModule::loadOlderEntries()
             QVector<Entry> page;
             while (page.size() < historyPageSize && query.next()) {
                 page.append({query.value(0).toLongLong(), query.value(1).toString(),
-                             QDateTime::fromMSecsSinceEpoch(query.value(2).toLongLong())});
+                             QDateTime::fromMSecsSinceEpoch(query.value(2).toLongLong()),
+                             query.value(3).toBool()});
             }
             hasOlderEntries_ = page.size() == historyPageSize && query.next();
             if (!page.isEmpty()) {
@@ -143,21 +164,80 @@ void ClipboardModule::copyEntry(int row)
     if (row < 0 || row >= entries_.size())
         return;
 
-    const QString text = entries_.at(row).text;
-    QGuiApplication::clipboard()->setText(text, QClipboard::Clipboard);
+    copyEntryById(QString::number(entries_.at(row).id));
+}
+
+bool ClipboardModule::copyEntryById(const QString &entryId)
+{
+    QSqlQuery query(database_);
+    query.prepare("SELECT text, image_png FROM clipboard_entries WHERE id = ?");
+    query.addBindValue(entryId);
+    if (!query.exec() || !query.next())
+        return false;
+
+    const QString title = query.value(0).toString();
+    const QByteArray png = query.value(1).toByteArray();
+    const bool isImage = !query.isNull(1);
+    query.finish();
+    if (!isImage) {
+        QGuiApplication::clipboard()->setText(title);
+    } else {
+        const QImage image = QImage::fromData(png, "PNG");
+        if (image.isNull())
+            return false;
+        copyScreenshot(image, title);
+    }
+    return true;
+}
+
+void ClipboardModule::copyScreenshot(const QImage &image, const QString &title)
+{
+    auto *mime = new QMimeData;
+    mime->setImageData(image);
+    mime->setData(imageTitleMime, title.toUtf8());
+    QGuiApplication::clipboard()->setMimeData(mime);
+}
+
+void ClipboardModule::previewEntry(const QString &entryId)
+{
+    QSqlQuery query(database_);
+    query.prepare("SELECT text, image_png FROM clipboard_entries WHERE id = ?");
+    query.addBindValue(entryId);
+    if (!query.exec() || !query.next())
+        return;
+
+    const QPixmap image = QPixmap::fromImage(QImage::fromData(query.value(1).toByteArray(), "PNG"));
+    if (image.isNull()) {
+        setStorageError(tr("Could not open the clipboard image."));
+        return;
+    }
+
+    auto *preview = new QDialog;
+    preview->setAttribute(Qt::WA_DeleteOnClose);
+    preview->setWindowTitle(query.value(0).toString());
+    auto *layout = new QVBoxLayout(preview);
+    auto *label = new QLabel(preview);
+    label->setAlignment(Qt::AlignCenter);
+    const auto *screen = QGuiApplication::screenAt(QCursor::pos());
+    const QSize limit = screen ? screen->availableGeometry().size() * 0.8 : QSize(900, 650);
+    label->setPixmap(image.width() > limit.width() || image.height() > limit.height()
+                         ? image.scaled(limit, Qt::KeepAspectRatio, Qt::SmoothTransformation) : image);
+    layout->addWidget(label);
+    preview->show();
 }
 
 QVariantList ClipboardModule::recentEntries()
 {
     QSqlQuery query(database_);
     if (database_.isOpen() && query.prepare(
-            "SELECT id, text FROM clipboard_entries ORDER BY id DESC LIMIT ?")) {
+            "SELECT id, text, image_png IS NOT NULL FROM clipboard_entries ORDER BY id DESC LIMIT ?")) {
         query.addBindValue(historyNumber());
         if (query.exec()) {
             QVariantList entries;
             while (query.next()) {
                 entries.append(QVariantMap{{"id", query.value(0).toString()},
-                                           {"text", query.value(1).toString()}});
+                                           {"text", query.value(1).toString()},
+                                           {"isImage", query.value(2).toBool()}});
             }
             return entries;
         }
@@ -211,24 +291,50 @@ bool ClipboardModule::deleteEntryById(const QString &entryId)
 
 void ClipboardModule::recordCopy()
 {
-    const QString text = QGuiApplication::clipboard()->text(QClipboard::Clipboard);
-    if (currentText_ != text) {
-        currentText_ = text;
+    auto *clipboard = QGuiApplication::clipboard();
+    const QMimeData *mime = clipboard->mimeData();
+    const QImage image = mime && mime->hasImage() ? qvariant_cast<QImage>(mime->imageData()) : QImage();
+    const bool isImage = !image.isNull();
+    const QString currentText = !isImage && mime && mime->hasText() ? mime->text() : QString();
+    if (currentText_ != currentText) {
+        currentText_ = currentText;
         emit currentTextChanged();
     }
-    if (text.isEmpty() || (!entries_.isEmpty() && entries_.first().text == text))
+
+    QString text = currentText;
+    QByteArray png;
+    if (isImage) {
+        text = clipboard->ownsClipboard() ? QString::fromUtf8(mime->data(imageTitleMime)) : QString();
+        if (text.isEmpty())
+            text = tr("Image");
+        QBuffer buffer(&png);
+        if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG")) {
+            setStorageError(tr("Could not store the clipboard image."));
+            return;
+        }
+        if (!entries_.isEmpty() && entries_.first().isImage && entries_.first().text == text) {
+            QSqlQuery previous(database_);
+            previous.prepare("SELECT image_png FROM clipboard_entries WHERE id = ?");
+            previous.addBindValue(entries_.first().id);
+            if (previous.exec() && previous.next() && previous.value(0).toByteArray() == png)
+                return;
+        }
+    } else if (text.isEmpty() || (!entries_.isEmpty() && !entries_.first().isImage
+                                && entries_.first().text == text)) {
         return;
+    }
 
     const qint64 copiedAt = QDateTime::currentMSecsSinceEpoch();
     QSqlQuery insert(database_);
-    if (insert.prepare("INSERT INTO clipboard_entries (text, copied_at_ms) VALUES (?, ?)")) {
+    if (insert.prepare("INSERT INTO clipboard_entries (text, copied_at_ms, image_png) VALUES (?, ?, ?)")) {
         insert.addBindValue(text);
         insert.addBindValue(copiedAt);
+        insert.addBindValue(isImage ? QVariant(png) : QVariant(QMetaType::fromType<QByteArray>()));
         if (insert.exec()) {
             const bool previouslyHadOlderEntries = hasOlderEntries();
             beginInsertRows({}, 0, 0);
             entries_.prepend({insert.lastInsertId().toLongLong(), text,
-                              QDateTime::fromMSecsSinceEpoch(copiedAt)});
+                              QDateTime::fromMSecsSinceEpoch(copiedAt), isImage});
             endInsertRows();
             if (previouslyHadOlderEntries != hasOlderEntries())
                 emit hasOlderEntriesChanged();

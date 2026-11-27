@@ -55,11 +55,11 @@ Window {
     }
 
     function acceptEntry(entry) {
-        if (entry === undefined)
+        if (entry === undefined || !clipboardModule.copyEntryById(entry.id))
             return
 
         hide()
-        desktopShortcut.paste(entry.text)
+        desktopShortcut.pasteClipboard()
     }
 
     function removeEntry(entry) {
@@ -230,14 +230,36 @@ Window {
                             text: row.modelData.text
 
                             background: Item {}
-                            contentItem: Label {
-                                text: entryButton.text.replace(/\s+/g, " ")
-                                textFormat: Text.PlainText
-                                color: "#f2f2f2"
-                                elide: Text.ElideRight
-                                verticalAlignment: Text.AlignVCenter
+                            contentItem: RowLayout {
+                                spacing: 7
+
+                                ClipboardTypeIcon { image: row.modelData.isImage }
+
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: entryButton.text.replace(/\s+/g, " ")
+                                    textFormat: Text.PlainText
+                                    color: "#f2f2f2"
+                                    elide: Text.ElideRight
+                                    verticalAlignment: Text.AlignVCenter
+                                }
                             }
                             onClicked: popup.acceptEntry(row.modelData)
+                        }
+
+                        HistoryAction {
+                            visible: row.modelData.isImage
+                            previewsEntry: true
+                            focusPolicy: Qt.NoFocus
+                            enabled: rowHover.hovered
+                            opacity: rowHover.hovered ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                            Accessible.name: qsTr("Open image")
+                            onClicked: {
+                                const id = row.modelData.id
+                                popup.hide()
+                                clipboardModule.previewEntry(id)
+                            }
                         }
 
                         HistoryAction {
