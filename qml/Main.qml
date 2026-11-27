@@ -19,6 +19,7 @@ ApplicationWindow {
     readonly property color barColor: "#171717"
     readonly property color panelColor: "#2a2a2a"
     readonly property color borderColor: "#3a3a3a"
+    readonly property color chromeDividerColor: "#303030"
     readonly property color textColor: "#f2f2f2"
     readonly property color mutedColor: "#b5b5b5"
     readonly property color accentColor: "#d6d6d6"
@@ -488,7 +489,7 @@ ApplicationWindow {
                 anchors.right: parent.right
                 width: 1
                 height: parent.height
-                color: window.borderColor
+                color: window.chromeDividerColor
             }
 
             Label {
@@ -589,7 +590,7 @@ ApplicationWindow {
                     anchors.bottom: parent.bottom
                     width: parent.width
                     height: 1
-                    color: window.borderColor
+                    color: window.chromeDividerColor
                 }
 
                 MouseArea {
