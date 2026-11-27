@@ -7,7 +7,7 @@ These instructions cover **Zorin OS 18.1 and Ubuntu 24.04 on X11**. Run `echo "$
 From the folder containing the package, run:
 
 ```bash
-sudo apt install ./clipify_0.1.2_amd64.deb
+sudo apt install ./clipify_0.1.3_amd64.deb
 ```
 
 The package contains the prebuilt app. APT installs the required Qt runtime and the German and English **Fast** OCR models and adds Clipify to the application menu.

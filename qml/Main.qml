@@ -14,7 +14,7 @@ ApplicationWindow {
     title: "Clipify"
     flags: Qt.Window | Qt.FramelessWindowHint | Qt.WindowMinimizeButtonHint
            | Qt.WindowMaximizeButtonHint | Qt.WindowCloseButtonHint
-    color: "#212121"
+    color: "#1b1b1b"
 
     readonly property color barColor: "#171717"
     readonly property color panelColor: "#2a2a2a"
@@ -212,13 +212,13 @@ ApplicationWindow {
         }
 
         background: Rectangle {
-            radius: height / 2
+            radius: 10
             color: clipboardButton.down ? "#bfbfbf"
                  : clipboardButton.hovered ? (clipboardButton.highlighted ? "#e3e3e3" : "#303030")
                  : clipboardButton.highlighted ? window.accentColor : "transparent"
             border.color: clipboardButton.visualFocus ? window.accentColor : window.borderColor
             border.width: clipboardButton.highlighted || clipboardButton.visualFocus ? 1 : 0
-            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on color { ColorAnimation { duration: 150 } }
         }
     }
 
@@ -470,161 +470,182 @@ ApplicationWindow {
         ToolTip.text: Accessible.name
     }
 
-    ColumnLayout {
+    RowLayout {
         anchors.fill: parent
         spacing: 0
 
         Rectangle {
-            Layout.fillWidth: true
-            Layout.preferredHeight: 48
+            Layout.preferredWidth: 180
+            Layout.fillHeight: true
             color: window.barColor
 
             Rectangle {
-                anchors.bottom: parent.bottom
-                width: parent.width
-                height: 1
+                anchors.right: parent.right
+                width: 1
+                height: parent.height
                 color: window.borderColor
             }
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.leftMargin: 17
-                anchors.rightMargin: 7
-                anchors.topMargin: 6
+            Label {
+                anchors.left: sidebarLogo.right
+                anchors.leftMargin: 8
+                anchors.verticalCenter: sidebarLogo.verticalCenter
+                text: "Clipify"
+                color: window.textColor
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
+
+            Image {
+                id: sidebarLogo
+                anchors.top: parent.top
+                anchors.topMargin: 8
+                anchors.left: parent.left
+                anchors.leftMargin: 13
+                width: 32
+                height: 32
+                source: "qrc:/clipify/assets/clipify-app-icon.png"
+                fillMode: Image.PreserveAspectFit
+                smooth: true
+                mipmap: true
+            }
+
+            ModuleButton {
+                y: 58
+                module: "clipboard"
+                text: qsTr("Clipboard")
+            }
+
+            ModuleButton {
+                y: 106
+                module: "screen"
+                text: qsTr("Screen")
+            }
+
+            ModuleButton {
+                anchors.bottom: exitButton.top
                 anchors.bottomMargin: 5
-                spacing: 4
+                module: "about"
+                text: qsTr("About")
+            }
 
-                Item {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
+            Button {
+                id: exitButton
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.margins: 13
+                height: 42
+                text: qsTr("Exit")
+                leftPadding: 13
+                hoverEnabled: true
+                onClicked: windowControls.quit()
 
-                    Row {
-                        anchors.verticalCenter: parent.verticalCenter
-                        spacing: 10
-
-                        Image {
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 28
-                            height: 28
-                            source: "qrc:/clipify/assets/clipify-app-icon.png"
-                            fillMode: Image.PreserveAspectFit
-                            smooth: true
-                            mipmap: true
-                        }
-
-                        Label {
-                            anchors.verticalCenter: parent.verticalCenter
-                            text: "Clipify"
-                            color: window.textColor
-                            font.pixelSize: 15
-                            font.weight: Font.DemiBold
-                        }
+                contentItem: RowLayout {
+                    spacing: 8
+                    LineIcon {
+                        symbol: "exit"
+                        ink: exitButton.hovered ? window.textColor : window.mutedColor
+                            Behavior on ink { ColorAnimation { duration: 190 } }
                     }
-
-                    MouseArea {
-                        anchors.fill: parent
-                        property point pressPoint
-
-                        onPressed: mouse => pressPoint = Qt.point(mouse.x, mouse.y)
-                        onPositionChanged: mouse => {
-                            if (pressed && Math.abs(mouse.x - pressPoint.x)
-                                           + Math.abs(mouse.y - pressPoint.y) >= 6)
-                                windowControls.move(window)
-                        }
-                        onDoubleClicked: window.toggleMaximized()
+                    Label {
+                        Layout.fillWidth: true
+                        text: exitButton.text
+                        color: exitButton.hovered ? window.textColor : window.mutedColor
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                            Behavior on color { ColorAnimation { duration: 190 } }
                     }
                 }
 
-                WindowButton {
-                    text: "−"
-                    Accessible.name: qsTr("Minimize")
-                    onClicked: window.showMinimized()
-                }
-                WindowButton {
-                    text: window.maximized ? "❐" : "□"
-                    Accessible.name: window.maximized ? qsTr("Restore") : qsTr("Maximize")
-                    onClicked: window.toggleMaximized()
-                }
-                WindowButton {
-                    text: "×"
-                    closesWindow: true
-                    Accessible.name: qsTr("Close")
-                    onClicked: window.close()
+                background: Rectangle {
+                    radius: height / 2
+                    color: exitButton.down ? "#414141" : exitButton.hovered ? "#303030" : "transparent"
+                    border.color: window.accentColor
+                    border.width: exitButton.visualFocus ? 1 : 0
+                    Behavior on color { ColorAnimation { duration: 190; easing.type: Easing.OutCubic } }
                 }
             }
         }
 
-        RowLayout {
+        ColumnLayout {
             Layout.fillWidth: true
             Layout.fillHeight: true
             spacing: 0
 
             Rectangle {
-                Layout.preferredWidth: 180
-                Layout.fillHeight: true
+                id: topBar
+                Layout.fillWidth: true
+                Layout.preferredHeight: 48
                 color: window.barColor
 
                 Rectangle {
-                    anchors.right: parent.right
-                    width: 1
-                    height: parent.height
+                    anchors.bottom: parent.bottom
+                    width: parent.width
+                    height: 1
                     color: window.borderColor
                 }
 
-                ModuleButton {
-                    y: 13
-                    module: "clipboard"
-                    text: qsTr("Clipboard")
-                }
+                MouseArea {
+                    anchors.fill: parent
+                    property point pressPoint
 
-                ModuleButton {
-                    y: 61
-                    module: "screen"
-                    text: qsTr("Screen")
-                }
-
-                ModuleButton {
-                    anchors.bottom: exitButton.top
-                    anchors.bottomMargin: 5
-                    module: "about"
-                    text: qsTr("About")
-                }
-
-                Button {
-                    id: exitButton
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 13
-                    height: 42
-                    text: qsTr("Exit")
-                    leftPadding: 13
-                    hoverEnabled: true
-                    onClicked: windowControls.quit()
-
-                    contentItem: RowLayout {
-                        spacing: 8
-                        LineIcon {
-                            symbol: "exit"
-                            ink: exitButton.hovered ? window.textColor : window.mutedColor
-                            Behavior on ink { ColorAnimation { duration: 160 } }
-                        }
-                        Label {
-                            Layout.fillWidth: true
-                            text: exitButton.text
-                            color: exitButton.hovered ? window.textColor : window.mutedColor
-                            font.pixelSize: 14
-                            font.weight: Font.DemiBold
-                            Behavior on color { ColorAnimation { duration: 160 } }
-                        }
+                    onPressed: mouse => pressPoint = Qt.point(mouse.x, mouse.y)
+                    onPositionChanged: mouse => {
+                        if (pressed && Math.abs(mouse.x - pressPoint.x)
+                                       + Math.abs(mouse.y - pressPoint.y) >= 6)
+                            windowControls.move(window)
                     }
+                    onDoubleClicked: window.toggleMaximized()
+                }
 
-                    background: Rectangle {
-                        radius: height / 2
-                        color: exitButton.down ? "#414141" : exitButton.hovered ? "#303030" : "transparent"
-                        border.color: window.accentColor
-                        border.width: exitButton.visualFocus ? 1 : 0
-                        Behavior on color { ColorAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                Label {
+                    anchors.centerIn: parent
+                    width: Math.max(0, parent.width - 2 * (windowButtons.width + 12))
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
+                    text: window.currentModule === "screen" ? qsTr("Screen")
+                        : window.currentModule === "about" ? qsTr("About") : qsTr("Clipboard")
+                    color: window.textColor
+                    font.pixelSize: 17
+                    font.weight: Font.DemiBold
+                    onTextChanged: titleTransition.restart()
+
+                    NumberAnimation on opacity {
+                        id: titleTransition
+                        running: false
+                        from: 0
+                        to: 1
+                        duration: 160
+                        easing.type: Easing.OutCubic
+                    }
+                }
+
+                RowLayout {
+                    id: windowButtons
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    anchors.rightMargin: 7
+                    anchors.topMargin: 6
+                    anchors.bottomMargin: 5
+                    spacing: 4
+
+                    WindowButton {
+                        text: "−"
+                        Accessible.name: qsTr("Minimize")
+                        onClicked: window.showMinimized()
+                    }
+                    WindowButton {
+                        text: window.maximized ? "❐" : "□"
+                        Accessible.name: window.maximized ? qsTr("Restore") : qsTr("Maximize")
+                        onClicked: window.toggleMaximized()
+                    }
+                    WindowButton {
+                        text: "×"
+                        closesWindow: true
+                        Accessible.name: qsTr("Close")
+                        onClicked: window.close()
                     }
                 }
             }
@@ -635,13 +656,6 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.margins: 22
                 spacing: 14
-
-                Label {
-                    text: qsTr("About Clipify")
-                    color: window.textColor
-                    font.pixelSize: 26
-                    font.weight: Font.DemiBold
-                }
 
                 Panel {
                     Layout.fillWidth: true
@@ -745,13 +759,6 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.margins: 22
                 spacing: 14
-
-                Label {
-                    text: qsTr("Clipboard")
-                    color: window.textColor
-                    font.pixelSize: 26
-                    font.weight: Font.DemiBold
-                }
 
                 Panel {
                     Layout.fillWidth: true
@@ -1035,13 +1042,6 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.margins: 22
                 spacing: 14
-
-                Label {
-                    text: qsTr("Screen")
-                    color: window.textColor
-                    font.pixelSize: 26
-                    font.weight: Font.DemiBold
-                }
 
                 ShortcutSetting {
                     shortcutController: screenShortcut
